@@ -522,7 +522,7 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
       <div class="card-title">Itens</div>
       <div id="cup-itens-list" style="margin-bottom:12px"></div>
       <div class="form-grid" style="margin-bottom:10px">
-        <div class="form-group form-full"><label class="form-label">Descrição</label><input class="form-control" id="cup-item-desc" placeholder="Produto / Serviço"></div>
+        <div class="form-group form-full"><label class="form-label">Descrição</label><input class="form-control" id="cup-item-desc" placeholder="Produto/Serviço ou escaneie o código de barras" onkeydown="if(event.key==='Enter'){event.preventDefault();processarLeituraCupom(this.value);}"></div>
         <div class="form-group"><label class="form-label">Qtd</label><input class="form-control" id="cup-item-qtd" type="number" min="1" value="1"></div>
         <div class="form-group"><label class="form-label">Valor Unit.</label><input class="form-control" id="cup-item-val" type="number" step="0.01" placeholder="0,00"></div>
       </div>
@@ -730,6 +730,7 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
     <button class="tab" onclick="switchTab(this,'cfg-usuarios')">👥 Usuários</button>
     <button class="tab" onclick="switchTab(this,'cfg-categorias')">🏷️ Categorias</button>
     <button class="tab" onclick="switchTab(this,'cfg-pgto')">💳 Formas de Pgto</button>
+    <button class="tab" onclick="switchTab(this,'cfg-backup')">💾 Backup</button>
   </div>
   <div class="tab-content active" id="tab-cfg-empresa">
     <div class="grid-2">
@@ -769,6 +770,17 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
   </div>
   <div class="tab-content" id="tab-cfg-pgto">
     <div class="card"><div class="card-title">💳 Formas de Pagamento</div><div id="cfg-pgto-list" style="margin-bottom:12px"></div><div style="display:flex;gap:8px"><input class="form-control" id="cfg-new-pgto" placeholder="Nova forma..."><button class="btn btn-primary btn-sm" onclick="addPgto()">+</button></div></div>
+  </div>
+  <div class="tab-content" id="tab-cfg-backup">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">💾 Backup Automático</div>
+      <p style="font-size:13px;color:var(--gray2);margin-bottom:14px">O sistema salva uma cópia completa dos dados automaticamente uma vez por dia (guardando os últimos 30 dias). Você também pode gerar uma cópia manual a qualquer momento.</p>
+      <button class="btn btn-primary" onclick="fazerBackupManual()">📥 Fazer Backup Agora</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 Backups Disponíveis</div>
+      <div id="cfg-backup-list">Carregando...</div>
+    </div>
   </div>
 </div>
   </main>
@@ -1021,6 +1033,55 @@ function atualizarIndicadorSync(status){
   else if(status===true){el.textContent='🟢 Sincronizado';el.title='Dados sincronizados com a nuvem';}
   else{el.textContent='🔴 Offline (local)';el.title='Sem conexão — trabalhando com os dados locais. Toque para tentar sincronizar agora.';}
 }
+/* ---- Backup automático diário ---- */
+async function fazerBackupSeNecessario(){
+  if(!sbClient||!navigator.onLine||usuarioLogado?.perfil!=='ADM')return;
+  const hoje=nowDate();
+  if(DB.config.ultimoBackup===hoje)return;
+  try{
+    await sbClient.from('app_state_backups').insert({data:DB});
+    DB.config.ultimoBackup=hoje;
+    saveDB();
+    const limite=new Date();limite.setDate(limite.getDate()-30);
+    await sbClient.from('app_state_backups').delete().lt('created_at',limite.toISOString());
+    console.log('Backup diário criado.');
+  }catch(e){console.error('Erro ao criar backup automático:',e);}
+}
+async function fazerBackupManual(){
+  if(!sbClient||!navigator.onLine)return toast('Sem conexão com a nuvem no momento.','error');
+  try{
+    await sbClient.from('app_state_backups').insert({data:DB});
+    DB.config.ultimoBackup=nowDate();
+    saveDB();
+    toast('Backup criado com sucesso!','success');
+    renderBackupsList();
+  }catch(e){console.error(e);toast('Erro ao criar backup.','error');}
+}
+async function renderBackupsList(){
+  const el=document.getElementById('cfg-backup-list');
+  if(!el)return;
+  if(!sbClient||!navigator.onLine){el.innerHTML='<div style="color:var(--gray2);font-size:13px">Sem conexão — não é possível listar backups agora.</div>';return;}
+  el.innerHTML='<div style="color:var(--gray2);font-size:13px">Carregando...</div>';
+  try{
+    const{data,error}=await sbClient.from('app_state_backups').select('id,created_at').order('created_at',{ascending:false}).limit(30);
+    if(error)throw error;
+    if(!data||data.length===0){el.innerHTML='<div style="color:var(--gray2);font-size:13px">Nenhum backup ainda.</div>';return;}
+    el.innerHTML=data.map(b=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px">${new Date(b.created_at).toLocaleString('pt-BR')}</span><button class="btn btn-secondary btn-xs" onclick="restaurarBackup(${b.id})">↩️ Restaurar</button></div>`).join('');
+  }catch(e){console.error(e);el.innerHTML='<div style="color:var(--red);font-size:13px">Erro ao carregar backups.</div>';}
+}
+async function restaurarBackup(id){
+  confirmar('Restaurar este backup? Os dados atuais serão substituídos pelos deste backup em TODOS os dispositivos conectados.',async()=>{
+    try{
+      const{data,error}=await sbClient.from('app_state_backups').select('data').eq('id',id).maybeSingle();
+      if(error||!data)throw error||new Error('Backup não encontrado');
+      DB=data.data;
+      aplicarMigracoesDB();
+      saveDB();
+      toast('Backup restaurado! Atualizando tela...','success');
+      setTimeout(()=>location.reload(),1200);
+    }catch(e){console.error(e);toast('Erro ao restaurar backup.','error');}
+  });
+}
 function iniciarRealtime(){
   if(!sbClient)return;
   sbClient.channel('app_state_sync')
@@ -1062,6 +1123,7 @@ function initApp(){
   mostrarBannerPapel();
   const anoAtual=new Date().getFullYear();
   document.getElementById('app-footer-text').innerHTML=`© ${anoAtual} <strong>Alexandre F. Ferrari</strong> — Todos os direitos reservados &nbsp;|&nbsp; Feito com 💻 ☕ e 🐈‍⬛`;
+  fazerBackupSeNecessario();
 }
 function mostrarBannerPapel(){
   const info={ADM:{icon:'👑',texto:'Administrador — acesso total'},VENDAS:{icon:'👤',texto:'Usuário Padrão — vendedor / estoquista'},TECNICO:{icon:'🔧',texto:'Técnico'},ESTOQUE:{icon:'📦',texto:'Estoque — somente produtos'}}[usuarioLogado.perfil]||{icon:'👤',texto:usuarioLogado.perfil};
@@ -1463,7 +1525,22 @@ function renderChartFluxo(){const ctx=document.getElementById('chart-fluxo').get
 
 function initCupom(){_cupomItens=[];document.getElementById('cup-num').value='CUP-'+String(DB.config.nextCupom).padStart(4,'0');document.getElementById('cup-data').value=new Date().toLocaleString('pt-BR');document.getElementById('cup-cliente').value='';document.getElementById('cup-recebido').value='';renderCupomItens();}
 function toggleTroco(){const d=document.getElementById('cup-pgto').value==='Dinheiro';document.getElementById('cup-troco-wrap').style.display=d?'':'none';document.getElementById('cup-troco-show').style.display=d?'':'none';}
-function addItemCupom(){const desc=document.getElementById('cup-item-desc').value.trim(),qtd=parseInt(document.getElementById('cup-item-qtd').value)||1,val=parseFloat(document.getElementById('cup-item-val').value)||0;if(!desc||val<=0){toast('Preencha descrição e valor.','warning');return;}_cupomItens.push({desc,qtd,val});renderCupomItens();document.getElementById('cup-item-desc').value='';document.getElementById('cup-item-val').value='';}
+function addItemCupom(){const desc=document.getElementById('cup-item-desc').value.trim(),qtd=parseInt(document.getElementById('cup-item-qtd').value)||1,val=parseFloat(document.getElementById('cup-item-val').value)||0;if(!desc||val<=0){toast('Preencha descrição e valor.','warning');return;}_cupomItens.push({desc,qtd,val});renderCupomItens();document.getElementById('cup-item-desc').value='';document.getElementById('cup-item-val').value='';document.getElementById('cup-item-desc').focus();}
+function processarLeituraCupom(codigo){
+  codigo=(codigo||'').trim();
+  if(!codigo)return;
+  const prod=DB.produtos.find(p=>p.codigoBarras&&p.codigoBarras===codigo);
+  if(prod){
+    if(prod.qtd<=0){toast(`Sem estoque de ${prod.nome}!`,'error');document.getElementById('cup-item-desc').value='';return;}
+    document.getElementById('cup-item-desc').value=prod.nome;
+    document.getElementById('cup-item-val').value=prod.venda;
+    document.getElementById('cup-item-qtd').value=document.getElementById('cup-item-qtd').value||1;
+    addItemCupom();
+    toast(`${prod.nome} adicionado!`,'success');
+  }else{
+    toast('Código não reconhecido — pode digitar a descrição manualmente.','warning');
+  }
+}
 function renderCupomItens(){const list=document.getElementById('cup-itens-list'),total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('cup-total').textContent=fmtMoeda(total);if(_cupomItens.length===0){list.innerHTML='<div style="color:var(--gray2);font-size:12px">Nenhum item.</div>';}else{list.innerHTML=_cupomItens.map((i,idx)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)"><span>${i.desc} (${i.qtd}x ${fmtMoeda(i.val)})</span><div style="display:flex;gap:8px;align-items:center"><span style="color:var(--green);font-weight:600">${fmtMoeda(i.val*i.qtd)}</span><button class="btn btn-danger btn-xs" onclick="_cupomItens.splice(${idx},1);renderCupomItens()">✕</button></div></div>`).join('');}renderPreviewCupom();}
 function calcTroco(){const total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0),rec=parseFloat(document.getElementById('cup-recebido').value)||0;document.getElementById('cup-troco').value=fmtMoeda(Math.max(0,rec-total));}
 function renderPreviewCupom(){const cfg=DB.config,total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('cupom-preview').innerHTML=`<div style="text-align:center;font-weight:bold;font-size:13px">${cfg.nome}</div><div style="text-align:center;font-size:11px">${cfg.cnpj}</div><div style="text-align:center;font-size:11px">${cfg.endereco}</div><div style="border-top:1px dashed #000;margin:5px 0"></div><div style="text-align:center;font-weight:bold">CUPOM NÃO FISCAL</div><div style="text-align:center;font-size:11px">${document.getElementById('cup-num').value}</div><div style="border-top:1px dashed #000;margin:5px 0"></div>${_cupomItens.map(i=>`<div style="display:flex;justify-content:space-between"><span>${i.desc}</span><span>${fmtMoeda(i.val*i.qtd)}</span></div>`).join('')}<div style="border-top:1px dashed #000;margin:5px 0"></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>TOTAL</span><span>${fmtMoeda(total)}</span></div><div style="font-size:11px">Forma: ${document.getElementById('cup-pgto').value}</div><div style="border-top:1px dashed #000;margin:5px 0"></div><div style="text-align:center;font-size:11px">${cfg.msgCupom}</div>`;}
@@ -1514,7 +1591,7 @@ function renderPedidosMKT(){const tbody=document.getElementById('mkt-pedidos-tbo
 function avancarPedido(id){const p=DB.pedidosMKT.find(x=>x.id===id);if(!p)return;const prox={novo:'em separação','em separação':'enviado',enviado:'entregue'},ant=p.status;p.status=prox[p.status]||p.status;if(p.status==='entregue'&&ant!=='entregue'){const prod=DB.produtos.find(x=>x.sku===p.sku);if(prod){prod.qtd=Math.max(0,prod.qtd-p.qtd);addAtividade(`Pedido ${id} entregue — baixa em ${p.produto}`,'var(--yellow)');}}saveDB();renderPedidosMKT();atualizarBadges();toast(`Pedido ${id} → ${p.status}`,'success');}
 function gerarPedidoSimulado(){const canais=['Mercado Livre','Shopee','Facebook Marketplace'],prod=DB.produtos[Math.floor(Math.random()*DB.produtos.length)],canal=canais[Math.floor(Math.random()*canais.length)],sigla={' Mercado Livre':'ML',Shopee:'SP','Facebook Marketplace':'FB'}[canal]||(canal.includes('Livre')?'ML':canal==='Shopee'?'SP':'FB'),id=sigla+'-'+Date.now().toString().slice(-4);DB.pedidosMKT.unshift({id,canal,produto:prod.nome,sku:prod.sku,qtd:1,valor:prod.venda,status:'novo',data:nowDate()});saveDB();renderPedidosMKT();toast(`Pedido simulado: ${id}`,'success');}
 
-function loadConfig(){const cfg=DB.config;document.getElementById('cfg-nome').value=cfg.nome||'';document.getElementById('cfg-cnpj').value=cfg.cnpj||'';document.getElementById('cfg-tel').value=cfg.tel||'';document.getElementById('cfg-end').value=cfg.endereco||'';document.getElementById('cfg-msg-cupom').value=cfg.msgCupom||'';document.getElementById('cfg-senha-financeiro').value=cfg.senhaFinanceiro||'';if(cfg.logo)document.getElementById('cfg-logo-preview').src='data:image/jpeg;base64,'+cfg.logo;renderUsersTable();renderCategorias();renderPgtos();}
+function loadConfig(){const cfg=DB.config;document.getElementById('cfg-nome').value=cfg.nome||'';document.getElementById('cfg-cnpj').value=cfg.cnpj||'';document.getElementById('cfg-tel').value=cfg.tel||'';document.getElementById('cfg-end').value=cfg.endereco||'';document.getElementById('cfg-msg-cupom').value=cfg.msgCupom||'';document.getElementById('cfg-senha-financeiro').value=cfg.senhaFinanceiro||'';if(cfg.logo)document.getElementById('cfg-logo-preview').src='data:image/jpeg;base64,'+cfg.logo;renderUsersTable();renderCategorias();renderPgtos();renderBackupsList();}
 function salvarConfig(){DB.config.nome=document.getElementById('cfg-nome').value;DB.config.cnpj=document.getElementById('cfg-cnpj').value;DB.config.tel=document.getElementById('cfg-tel').value;DB.config.endereco=document.getElementById('cfg-end').value;DB.config.msgCupom=document.getElementById('cfg-msg-cupom').value;const novaSenha=document.getElementById('cfg-senha-financeiro').value.trim();if(novaSenha)DB.config.senhaFinanceiro=novaSenha;saveDB();toast('Configurações salvas!','success');}
 function uploadLogo(input){const file=input.files[0];if(!file)return;const r=new FileReader();r.onload=e=>{const b64=e.target.result.split(',')[1];DB.config.logo=b64;document.getElementById('cfg-logo-preview').src=e.target.result;document.getElementById('sidebar-logo-img').src=e.target.result;document.getElementById('login-logo-img').src=e.target.result;saveDB();toast('Logo atualizado!','success');};r.readAsDataURL(file);}
 function renderUsersTable(){document.getElementById('cfg-users-tbody').innerHTML=DB.usuarios.map(u=>`<tr><td>${u.nome}</td><td style="font-family:monospace;color:var(--gray2)">${u.login}</td><td><span class="badge ${u.perfil==='ADM'?'badge-red':u.perfil==='VENDAS'?'badge-blue':u.perfil==='ESTOQUE'?'badge-yellow':'badge-green'}">${u.perfil}</span></td><td>${u.ativo!==false?'<span class="badge badge-green">Ativo</span>':'<span class="badge badge-gray">Inativo</span>'}</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" onclick="editarUsuario(${u.id})">✏️</button>${u.id!==usuarioLogado.id?`<button class="btn btn-danger btn-xs" onclick="excluirUsuario(${u.id})">🗑️</button>`:''}</div></td></tr>`).join('');}
