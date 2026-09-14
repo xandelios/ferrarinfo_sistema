@@ -166,6 +166,11 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;font-size:12px;color:var(--white2)}
 .chip-del{background:none;border:none;color:var(--gray3);font-size:14px;cursor:pointer;line-height:1}.chip-del:hover{color:var(--red)}
+.pdv-tile{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:28px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;transition:all .15s;position:relative}
+.pdv-tile:hover{border-color:var(--red);transform:translateY(-2px)}
+.pdv-tile-icon{font-size:40px}
+.pdv-tile-label{font-size:15px;font-weight:700;text-align:center}
+.pdv-tile-key{position:absolute;top:10px;right:12px;font-size:11px;font-weight:800;color:var(--red);background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:2px 7px}
 @media(max-width:1200px){.grid-4{grid-template-columns:repeat(2,1fr)}}
 @media print{body{background:#fff;color:#000}.sidebar,.header,.toast-container,.modal-overlay,#login-screen{display:none!important}.main{margin:0;padding:0}.no-print{display:none!important}}
 .mobile-menu-btn{display:none}
@@ -221,6 +226,7 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
     </div>
     <div class="nav-group" id="nav-principal">
       <div class="nav-label">Principal</div>
+      <div class="nav-item" onclick="navigate('pdv')"><span class="nav-icon">🖥️</span>Modo PDV</div>
       <div class="nav-item active" onclick="navigate('dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
     </div>
     <div class="nav-group" id="nav-os">
@@ -264,11 +270,29 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
     <div class="header-title" id="header-title">Dashboard</div>
     <div class="header-actions">
       <div class="header-date" id="header-date"></div>
-      <span id="sync-indicator" style="font-size:12px;color:var(--gray2);margin-right:6px">🟡 Conectando...</span>
+      <span id="sync-indicator" onclick="sincronizarAgora()" style="font-size:12px;color:var(--gray2);margin-right:6px;cursor:pointer">🟡 Conectando...</span>
       <button class="btn-icon" onclick="showNotifications()" title="Notificações">🔔<span class="notif-dot" id="notif-dot" style="display:none"></span></button>
     </div>
   </header>
   <main class="main" id="main-content">
+<!-- MODO PDV -->
+<div class="page" id="page-pdv">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - var(--header-h) - 60px);gap:32px">
+    <div style="text-align:center">
+      <div id="pdv-relogio" style="font-size:56px;font-weight:800;line-height:1;font-family:monospace">00:00:00</div>
+      <div id="pdv-data" style="font-size:15px;color:var(--gray2);margin-top:6px">—</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:820px">
+      <div class="pdv-tile" onclick="navigate('cupom')"><span class="pdv-tile-icon">🧾</span><span class="pdv-tile-label">Nova Venda</span><span class="pdv-tile-key">F1</span></div>
+      <div class="pdv-tile" onclick="navigate('entrada')"><span class="pdv-tile-icon">📥</span><span class="pdv-tile-label">Nova OS</span><span class="pdv-tile-key">F2</span></div>
+      <div class="pdv-tile" onclick="navigate('os')"><span class="pdv-tile-icon">🔧</span><span class="pdv-tile-label">Consultar OS</span><span class="pdv-tile-key">F3</span></div>
+      <div class="pdv-tile" onclick="navigate('estoque')"><span class="pdv-tile-icon">📦</span><span class="pdv-tile-label">Estoque</span><span class="pdv-tile-key">F4</span></div>
+      <div class="pdv-tile" onclick="navigate('etiquetas')"><span class="pdv-tile-icon">🏷️</span><span class="pdv-tile-label">Etiquetas</span><span class="pdv-tile-key">F5</span></div>
+      <div class="pdv-tile" onclick="navigate('promissorias')"><span class="pdv-tile-icon">💳</span><span class="pdv-tile-label">Vendas a Prazo</span><span class="pdv-tile-key">F6</span></div>
+    </div>
+    <button class="btn btn-secondary" onclick="navigate('dashboard')" style="margin-top:6px">📊 Ver Dashboard completo</button>
+  </div>
+</div>
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
   <div class="section-header">
@@ -848,7 +872,8 @@ const DADOS_INICIAIS={
     {id:1,nome:'Xande',login:'xande',senha:'epicrout3r!!',perfil:'ADM',ativo:true},
     {id:2,nome:'Usuário Padrão',login:'user',senha:'123',perfil:'VENDAS',ativo:true},
     {id:3,nome:'Técnico',login:'tecnico',senha:'tec123',perfil:'TECNICO',ativo:true},
-    {id:4,nome:'Estoque',login:'estoque',senha:'estoque123',perfil:'ESTOQUE',ativo:true}
+    {id:4,nome:'Estoque',login:'estoque',senha:'estoque123',perfil:'ESTOQUE',ativo:true},
+    {id:5,nome:'PDV',login:'vendas',senha:'vendas',perfil:'VENDAS',ativo:true}
   ],
   categoriasProd:['Memória RAM','SSD/HD','Processador','Placa de Vídeo','Fonte','Periférico','Cabo/Adaptador','Outros'],
   categoriasServ:['Formatação','Reparo Hardware','Limpeza','Instalação Software','Rede','Outros'],
@@ -909,7 +934,7 @@ let _cupomItens=[],_nfItens=[],_orcItens=[],chartSemana=null,chartFluxo=null;
 const SUPABASE_URL='https://aysaxhqojpkfxgmuaogp.supabase.co';
 const SUPABASE_KEY='sb_publishable_WUyVwIfFqaF3zcssgF9CYA_CljYsE82';
 const sbClient=(window.supabase&&SUPABASE_URL)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
-let _saveTimeout=null,_syncOk=false;
+let _saveTimeout=null,_syncOk=false,_pendingSync=false,_syncEmAndamento=false,_ultimoUpdatedAtConhecido=null;
 
 function aplicarMigracoesDB(){
   if(!DB.atividade)DB.atividade=DADOS_INICIAIS.atividade;
@@ -924,21 +949,25 @@ function aplicarMigracoesDB(){
   if(!DB.contasMes)DB.contasMes=[];
   const u1=DB.usuarios.find(u=>u.login==='admin'&&u.senha==='admin123');if(u1){u1.nome='Xande';u1.login='xande';u1.senha='epicrout3r!!';}
   const u2=DB.usuarios.find(u=>u.login==='vendas'&&u.senha==='vendas123');if(u2){u2.nome='Usuário Padrão';u2.login='user';u2.senha='123';}
+  if(!DB.usuarios.some(u=>u.login==='vendas'))DB.usuarios.push({id:Date.now()+1,nome:'PDV',login:'vendas',senha:'vendas',perfil:'VENDAS',ativo:true});
 }
 
 async function initDB(){
   DB=JSON.parse(JSON.stringify(DADOS_INICIAIS));
   const cache=localStorage.getItem('ferrarinfo_db_cache');
   if(cache){try{DB=JSON.parse(cache);}catch(e){}}
-  if(!sbClient){atualizarIndicadorSync(false);aplicarMigracoesDB();return;}
+  if(!sbClient||!navigator.onLine){atualizarIndicadorSync(false);aplicarMigracoesDB();return;}
   try{
-    const{data,error}=await sbClient.from('app_state').select('data').eq('id',1).maybeSingle();
+    const{data,error}=await sbClient.from('app_state').select('data,updated_at').eq('id',1).maybeSingle();
     if(error)throw error;
     if(data&&data.data){
       DB=data.data;
+      _ultimoUpdatedAtConhecido=data.updated_at;
     }else{
       aplicarMigracoesDB();
-      await sbClient.from('app_state').upsert({id:1,data:DB,updated_at:new Date().toISOString()});
+      const agora=new Date().toISOString();
+      await sbClient.from('app_state').upsert({id:1,data:DB,updated_at:agora});
+      _ultimoUpdatedAtConhecido=agora;
     }
     atualizarIndicadorSync(true);
   }catch(e){
@@ -947,35 +976,52 @@ async function initDB(){
   }
   aplicarMigracoesDB();
   localStorage.setItem('ferrarinfo_db_cache',JSON.stringify(DB));
+  if(sbClient&&navigator.onLine)enviarParaNuvem();
 }
 function saveDB(){
   localStorage.setItem('ferrarinfo_db_cache',JSON.stringify(DB));
   if(!sbClient)return;
   clearTimeout(_saveTimeout);
-  _saveTimeout=setTimeout(async()=>{
-    try{
-      const{error}=await sbClient.from('app_state').upsert({id:1,data:DB,updated_at:new Date().toISOString()});
-      if(error)throw error;
-      atualizarIndicadorSync(true);
-    }catch(e){
-      console.error('Erro ao sincronizar com a nuvem:',e);
-      atualizarIndicadorSync(false);
-    }
-  },350);
+  _saveTimeout=setTimeout(()=>enviarParaNuvem(),350);
 }
-function atualizarIndicadorSync(ok){
-  _syncOk=ok;
+async function enviarParaNuvem(){
+  if(!sbClient||!navigator.onLine){_pendingSync=true;atualizarIndicadorSync(false);return;}
+  _syncEmAndamento=true;atualizarIndicadorSync('sincronizando');
+  try{
+    const agora=new Date().toISOString();
+    const{error}=await sbClient.from('app_state').upsert({id:1,data:DB,updated_at:agora});
+    if(error)throw error;
+    _ultimoUpdatedAtConhecido=agora;
+    _pendingSync=false;_syncEmAndamento=false;
+    atualizarIndicadorSync(true);
+  }catch(e){
+    console.error('Erro ao sincronizar com a nuvem:',e);
+    _pendingSync=true;_syncEmAndamento=false;
+    atualizarIndicadorSync(false);
+  }
+}
+// Tenta reenviar sozinho a cada 8s enquanto houver alteração pendente e a internet estiver de volta
+setInterval(()=>{if(_pendingSync&&!_syncEmAndamento&&navigator.onLine)enviarParaNuvem();},8000);
+// Reage instantaneamente quando o navegador percebe que a internet voltou/caiu
+window.addEventListener('online',()=>{toast('Conexão restabelecida — sincronizando...','info');enviarParaNuvem();});
+window.addEventListener('offline',()=>{atualizarIndicadorSync(false);toast('Sem internet — trabalhando offline. Os dados serão enviados quando a conexão voltar.','warning');});
+function sincronizarAgora(){if(!navigator.onLine){toast('Sem internet no momento.','warning');return;}enviarParaNuvem();}
+function atualizarIndicadorSync(status){
+  _syncOk=status===true;
   const el=document.getElementById('sync-indicator');
   if(!el)return;
-  el.textContent=ok?'🟢 Sincronizado':'🔴 Sem conexão';
-  el.title=ok?'Dados sincronizados com a nuvem':'Trabalhando offline — os dados serão sincronizados quando a conexão voltar';
+  if(status==='sincronizando'){el.textContent='🟡 Sincronizando...';el.title='Enviando alterações para a nuvem';}
+  else if(status===true){el.textContent='🟢 Sincronizado';el.title='Dados sincronizados com a nuvem';}
+  else{el.textContent='🔴 Offline (local)';el.title='Sem conexão — trabalhando com os dados locais. Toque para tentar sincronizar agora.';}
 }
 function iniciarRealtime(){
   if(!sbClient)return;
   sbClient.channel('app_state_sync')
     .on('postgres_changes',{event:'*',schema:'public',table:'app_state',filter:'id=eq.1'},payload=>{
       if(!payload.new||!payload.new.data)return;
+      if(_pendingSync)return; // evita sobrescrever alterações locais ainda não enviadas
       DB=payload.new.data;
+      _ultimoUpdatedAtConhecido=payload.new.updated_at;
       aplicarMigracoesDB();
       localStorage.setItem('ferrarinfo_db_cache',JSON.stringify(DB));
       atualizarIndicadorSync(true);
@@ -1005,7 +1051,7 @@ function initApp(){
   document.getElementById('header-date').textContent=now.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'});
   document.getElementById('dash-date-sub').textContent=now.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('fin-filter-mes').value=now.toISOString().slice(0,7);
-  applyPermissions();navigate(usuarioLogado.perfil==='ESTOQUE'?'estoque':'dashboard');atualizarBadges();
+  applyPermissions();navigate(usuarioLogado.perfil==='ESTOQUE'?'estoque':(usuarioLogado.perfil==='VENDAS'?'pdv':'dashboard'));atualizarBadges();
   mostrarBannerPapel();
   const anoAtual=new Date().getFullYear();
   document.getElementById('app-footer-text').innerHTML=`© ${anoAtual} <strong>Alexandre F. Ferrari</strong> — Todos os direitos reservados &nbsp;|&nbsp; Feito com 💻 ☕ e 🐈‍⬛`;
@@ -1026,9 +1072,9 @@ function applyPermissions(){
   if(p==='ESTOQUE'){document.getElementById('nav-principal').style.display='none';document.getElementById('nav-os').style.display='none';document.getElementById('nav-financeiro').style.display='none';document.getElementById('nav-promissorias').style.display='none';document.getElementById('nav-item-marketplace').style.display='none';}
   if(p!=='ADM')document.getElementById('nav-config').style.display='none';
 }
-function canAccess(page){const p=usuarioLogado.perfil,map={dashboard:['ADM','VENDAS','TECNICO'],entrada:['ADM','VENDAS','TECNICO'],os:['ADM','VENDAS','TECNICO'],etiquetas:['ADM','VENDAS','TECNICO'],orcamentos:['ADM','VENDAS'],estoque:['ADM','VENDAS','ESTOQUE'],marketplace:['ADM','VENDAS'],financeiro:['ADM'],cupom:['ADM','VENDAS'],nf:['ADM','VENDAS'],promissorias:['ADM','VENDAS'],config:['ADM']};return(map[page]||['ADM']).includes(p);}
+function canAccess(page){const p=usuarioLogado.perfil,map={dashboard:['ADM','VENDAS','TECNICO'],pdv:['ADM','VENDAS','TECNICO'],entrada:['ADM','VENDAS','TECNICO'],os:['ADM','VENDAS','TECNICO'],etiquetas:['ADM','VENDAS','TECNICO'],orcamentos:['ADM','VENDAS'],estoque:['ADM','VENDAS','ESTOQUE'],marketplace:['ADM','VENDAS'],financeiro:['ADM'],cupom:['ADM','VENDAS'],nf:['ADM','VENDAS'],promissorias:['ADM','VENDAS'],config:['ADM']};return(map[page]||['ADM']).includes(p);}
 
-const PAGE_TITLES={dashboard:'Dashboard',entrada:'Entrada de Serviços',os:'Ordens de Serviço',etiquetas:'Etiquetas',orcamentos:'Orçamentos',estoque:'Estoque',marketplace:'Marketplace',financeiro:'Controle Financeiro',cupom:'Cupom Fiscal',nf:'Nota Fiscal',promissorias:'Vendas a Prazo & Promissórias',config:'Configurações'};
+const PAGE_TITLES={dashboard:'Dashboard',pdv:'Modo PDV',entrada:'Entrada de Serviços',os:'Ordens de Serviço',etiquetas:'Etiquetas',orcamentos:'Orçamentos',estoque:'Estoque',marketplace:'Marketplace',financeiro:'Controle Financeiro',cupom:'Cupom Fiscal',nf:'Nota Fiscal',promissorias:'Vendas a Prazo & Promissórias',config:'Configurações'};
 let _financeiroDesbloqueado=false;
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('open');}
 function navigate(page){if(!canAccess(page)){toast('Sem permissão para esta área.','error');return;}
@@ -1039,7 +1085,7 @@ function navigate(page){if(!canAccess(page)){toast('Sem permissão para esta ár
   const pg=document.getElementById('page-'+page);if(pg)pg.classList.add('active');
   document.getElementById('header-title').textContent=PAGE_TITLES[page]||page;
   document.querySelectorAll('.nav-item').forEach(i=>{if(i.getAttribute('onclick')&&i.getAttribute('onclick').includes("'"+page+"'"))i.classList.add('active');});
-  const loaders={dashboard:loadDashboard,os:loadOS,etiquetas:loadEtiquetas,orcamentos:loadOrcamentos,estoque:loadEstoque,financeiro:loadFinanceiro,marketplace:loadMarketplace,cupom:initCupom,nf:initNF,promissorias:loadPromissorias,config:loadConfig,entrada:initEntrada};
+  const loaders={dashboard:loadDashboard,pdv:loadPDV,os:loadOS,etiquetas:loadEtiquetas,orcamentos:loadOrcamentos,estoque:loadEstoque,financeiro:loadFinanceiro,marketplace:loadMarketplace,cupom:initCupom,nf:initNF,promissorias:loadPromissorias,config:loadConfig,entrada:initEntrada};
   const leitorGlobal=document.getElementById('leitor-flutuante');
   if(leitorGlobal)leitorGlobal.style.display=(page==='estoque'||!['ADM','VENDAS','TECNICO'].includes(usuarioLogado.perfil))?'none':'';
   if(loaders[page])loaders[page]();
@@ -1693,6 +1739,27 @@ function salvarCredor(){
    LEITOR DE QR CODE — BAIXA AUTOMÁTICA DE OS NA SAÍDA
    ========================================================= */
 let _saidaOsId=null;
+
+/* ---- Modo PDV: relógio + atalhos de teclado ---- */
+let _pdvRelogioInterval=null;
+function loadPDV(){
+  atualizarRelogioPDV();
+  clearInterval(_pdvRelogioInterval);
+  _pdvRelogioInterval=setInterval(atualizarRelogioPDV,1000);
+}
+function atualizarRelogioPDV(){
+  const el=document.getElementById('pdv-relogio'),elData=document.getElementById('pdv-data');
+  if(!el)return;
+  const now=new Date();
+  el.textContent=now.toLocaleTimeString('pt-BR');
+  elData.textContent=now.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+}
+document.addEventListener('keydown',(e)=>{
+  const pg=document.getElementById('page-pdv');
+  if(!pg||!pg.classList.contains('active'))return;
+  const teclas={F1:'cupom',F2:'entrada',F3:'os',F4:'estoque',F5:'etiquetas',F6:'promissorias'};
+  if(teclas[e.key]){e.preventDefault();navigate(teclas[e.key]);}
+});
 
 function manterFocoLeitor(){
   const inp=document.getElementById('leitor-saida-input');
