@@ -127,8 +127,8 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
 @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
 .empty-state{text-align:center;padding:48px 24px;color:var(--gray2)}
 .empty-icon{font-size:48px;margin-bottom:12px;opacity:.4}.empty-title{font-size:15px;font-weight:600;color:var(--white2);margin-bottom:6px}.empty-desc{font-size:13px}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
-.tab{padding:10px 18px;font-size:13px;font-weight:600;color:var(--gray2);border:none;background:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;margin-bottom:-1px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{padding:10px 18px;font-size:13px;font-weight:600;color:var(--gray2);border:none;background:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;margin-bottom:-1px;flex-shrink:0;white-space:nowrap}
 .tab:hover{color:var(--white)}.tab.active{color:var(--white);border-bottom-color:var(--red)}
 .tab-content{display:none}.tab-content.active{display:block}
 .alert{padding:10px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:14px}
@@ -199,6 +199,15 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
   .section-header{flex-direction:column;align-items:flex-start!important;gap:10px}
   table{font-size:12px}
   #etq-grid{grid-template-columns:1fr!important}
+  .pdv-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
+  .pdv-wrap{min-height:auto!important;gap:18px!important;padding:10px 0}
+  #pdv-relogio{font-size:38px!important}
+  .pdv-tile{padding:18px 10px!important}
+  .pdv-tile-icon{font-size:30px!important}
+  .pdv-tile-label{font-size:12px!important}
+}
+@media (max-width:460px){
+  .pdv-grid{grid-template-columns:1fr!important}
 }
 </style>
 </head>
@@ -277,12 +286,12 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
   <main class="main" id="main-content">
 <!-- MODO PDV -->
 <div class="page" id="page-pdv">
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - var(--header-h) - 60px);gap:32px">
+  <div class="pdv-wrap" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - var(--header-h) - 60px);gap:32px;box-sizing:border-box;width:100%">
     <div style="text-align:center">
       <div id="pdv-relogio" style="font-size:56px;font-weight:800;line-height:1;font-family:monospace">00:00:00</div>
       <div id="pdv-data" style="font-size:15px;color:var(--gray2);margin-top:6px">—</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:820px">
+    <div class="pdv-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:820px;box-sizing:border-box">
       <div class="pdv-tile" onclick="navigate('cupom')"><span class="pdv-tile-icon">🧾</span><span class="pdv-tile-label">Nova Venda</span><span class="pdv-tile-key">F1</span></div>
       <div class="pdv-tile" onclick="navigate('entrada')"><span class="pdv-tile-icon">📥</span><span class="pdv-tile-label">Nova OS</span><span class="pdv-tile-key">F2</span></div>
       <div class="pdv-tile" onclick="navigate('os')"><span class="pdv-tile-icon">🔧</span><span class="pdv-tile-label">Consultar OS</span><span class="pdv-tile-key">F3</span></div>
@@ -679,41 +688,35 @@ select.form-control option{background:var(--bg3)}textarea.form-control{resize:ve
   </div>
 </div>
 <div class="page" id="page-marketplace">
-  <div class="section-header"><div><div class="section-title">Marketplace</div><div class="section-sub">Canais de venda</div></div></div>
+  <div class="section-header"><div><div class="section-title">Marketplace</div><div class="section-sub">Facebook Marketplace</div></div></div>
   <div class="tabs">
-    <button class="tab active" onclick="switchTab(this,'mkt-ml')">🟡 Mercado Livre</button>
-    <button class="tab" onclick="switchTab(this,'mkt-sp')">🟠 Shopee</button>
-    <button class="tab" onclick="switchTab(this,'mkt-fb')">🔵 Facebook</button>
-    <button class="tab" onclick="switchTab(this,'mkt-pedidos')">📦 Pedidos</button>
+    <button class="tab active" onclick="switchTab(this,'mkt-fb')">🔵 Facebook Marketplace</button>
+    <button class="tab" onclick="switchTab(this,'mkt-pedidos')">📦 Vendas</button>
   </div>
-  <div class="tab-content active" id="tab-mkt-ml">
+  <div class="tab-content active" id="tab-mkt-fb">
     <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="card-title" style="margin:0">Produtos — Mercado Livre</div><button class="btn btn-secondary btn-sm" onclick="sincronizarMKT('Mercado Livre','ml')">🔄 Sincronizar</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Produto</th><th>Preço Estoque</th><th>Preço ML</th><th>Ativo</th><th>Qtd</th></tr></thead><tbody id="mkt-ml-tbody"></tbody></table></div>
-    </div>
-    <div class="card"><div class="card-title">Log</div><pre id="mkt-ml-log" style="font-size:11px;color:var(--gray2);max-height:100px;overflow-y:auto;background:var(--bg3);padding:10px;border-radius:6px">Aguardando...</pre></div>
-  </div>
-  <div class="tab-content" id="tab-mkt-sp">
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="card-title" style="margin:0">Produtos — Shopee</div><button class="btn btn-secondary btn-sm" onclick="sincronizarMKT('Shopee','sp')">🔄 Sincronizar</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Produto</th><th>Preço Estoque</th><th>Preço Shopee</th><th>Ativo</th><th>Qtd</th></tr></thead><tbody id="mkt-sp-tbody"></tbody></table></div>
-    </div>
-    <div class="card"><div class="card-title">Log</div><pre id="mkt-sp-log" style="font-size:11px;color:var(--gray2);max-height:100px;overflow-y:auto;background:var(--bg3);padding:10px;border-radius:6px">Aguardando...</pre></div>
-  </div>
-  <div class="tab-content" id="tab-mkt-fb">
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="card-title" style="margin:0">Produtos — Facebook</div><button class="btn btn-secondary btn-sm" onclick="sincronizarMKT('Facebook','fb')">🔄 Sincronizar</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="card-title" style="margin:0">Produtos — Facebook Marketplace</div><button class="btn btn-secondary btn-sm" onclick="sincronizarMKT('Facebook Marketplace','fb')">🔄 Sincronizar</button></div>
       <div class="table-wrap"><table><thead><tr><th>Produto</th><th>Preço Estoque</th><th>Preço FB</th><th>Ativo</th><th>Qtd</th></tr></thead><tbody id="mkt-fb-tbody"></tbody></table></div>
     </div>
     <div class="card"><div class="card-title">Log</div><pre id="mkt-fb-log" style="font-size:11px;color:var(--gray2);max-height:100px;overflow-y:auto;background:var(--bg3);padding:10px;border-radius:6px">Aguardando...</pre></div>
   </div>
   <div class="tab-content" id="tab-mkt-pedidos">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">✅ Registrar Venda (já dá baixa no estoque na hora)</div>
+      <form class="form-grid" onsubmit="registrarVendaMKT(event)">
+        <div class="form-group form-full"><label class="form-label">Produto *</label><select class="form-control" id="mkt-venda-produto" required onchange="atualizarValorVendaMKT()"><option value="">Selecione</option></select></div>
+        <div class="form-group"><label class="form-label">Quantidade *</label><input class="form-control" id="mkt-venda-qtd" type="number" min="1" value="1" required oninput="atualizarValorVendaMKT()"></div>
+        <div class="form-group"><label class="form-label">Valor Total (R$) *</label><input class="form-control" id="mkt-venda-valor" type="number" step="0.01" required></div>
+        <div class="form-group"><label class="form-label">Forma de Recebimento</label><select class="form-control" id="mkt-venda-pgto"></select></div>
+        <div class="form-group form-full" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="mkt-venda-lancar-fin" checked><label for="mkt-venda-lancar-fin" style="font-size:13px;cursor:pointer">Lançar receita no Financeiro automaticamente</label></div>
+        <div class="form-group form-full"><button class="btn btn-primary" type="submit">✅ Registrar e Dar Baixa</button></div>
+      </form>
+    </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <div class="card-title" style="margin:0">📦 Pedidos</div>
-        <button class="btn btn-primary btn-sm" onclick="gerarPedidoSimulado()">+ Simular Pedido</button>
+        <div class="card-title" style="margin:0">📦 Vendas Registradas</div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Canal</th><th>Produto</th><th>Qtd</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody id="mkt-pedidos-tbody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Canal</th><th>Produto</th><th>Qtd</th><th>Valor</th><th>Status</th></tr></thead><tbody id="mkt-pedidos-tbody"></tbody></table></div>
     </div>
   </div>
 </div>
@@ -1467,10 +1470,43 @@ function addItemNF(){const desc=document.getElementById('nf-item-desc').value.tr
 function renderNFItens(){const list=document.getElementById('nf-itens-list'),total=_nfItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('nf-total').textContent=fmtMoeda(total);if(_nfItens.length===0){list.innerHTML='<div style="color:var(--gray2);font-size:12px">Nenhum item.</div>';return;}list.innerHTML=`<table style="width:100%;font-size:11px"><thead><tr><th style="text-align:left">Desc</th><th>Qtd</th><th>Unit</th><th>CFOP</th><th>ICMS%</th><th>Total</th><th></th></tr></thead><tbody>${_nfItens.map((i,idx)=>`<tr><td>${i.desc}</td><td style="text-align:center">${i.qtd}</td><td>${fmtMoeda(i.val)}</td><td>${i.cfop}</td><td>${i.icms}%</td><td style="color:var(--green)">${fmtMoeda(i.val*i.qtd)}</td><td><button class="btn btn-danger btn-xs" onclick="_nfItens.splice(${idx},1);renderNFItens()">✕</button></td></tr>`).join('')}</tbody></table>`;}
 function imprimirNF(){if(_nfItens.length===0){toast('Adicione itens.','warning');return;}const num=document.getElementById('nf-num').value,emNome=document.getElementById('nf-emit-nome').value,emCnpj=document.getElementById('nf-emit-cnpj').value,emIe=document.getElementById('nf-emit-ie').value,emEnd=document.getElementById('nf-emit-end').value,destNome=document.getElementById('nf-dest-nome').value,destCpf=document.getElementById('nf-dest-cpf').value,destEnd=document.getElementById('nf-dest-end').value,destTel=document.getElementById('nf-dest-tel').value,pgto=document.getElementById('nf-pgto').value,obs=document.getElementById('nf-obs').value,total=_nfItens.reduce((a,i)=>a+i.val*i.qtd,0);const html=`<html><head><style>body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:4px 6px;font-size:10px}.title{text-align:center;font-weight:bold;font-size:16px;margin-bottom:8px}.section{border:1px solid #000;margin-bottom:8px;padding:8px}.label{font-size:9px;font-weight:bold;text-transform:uppercase;color:#555;margin-bottom:3px}</style></head><body><div class="title">NOTA FISCAL SIMULADA — ${num}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><div class="section"><div class="label">Emitente</div><b>${emNome}</b><br>CNPJ: ${emCnpj} | IE: ${emIe}<br>${emEnd}</div><div class="section"><div class="label">Destinatário</div><b>${destNome}</b><br>CPF/CNPJ: ${destCpf}<br>${destEnd} | Tel: ${destTel}</div></div><table><thead><tr><th>Descrição</th><th>CFOP</th><th>CST</th><th>Qtd</th><th>Unit</th><th>ICMS%</th><th>VL ICMS</th><th>Total</th></tr></thead><tbody>${_nfItens.map(i=>`<tr><td>${i.desc}</td><td>${i.cfop}</td><td>${i.cst}</td><td style="text-align:center">${i.qtd}</td><td>R$ ${i.val.toFixed(2)}</td><td>${i.icms}%</td><td>R$ ${(i.val*i.qtd*i.icms/100).toFixed(2)}</td><td>R$ ${(i.val*i.qtd).toFixed(2)}</td></tr>`).join('')}</tbody></table><div style="text-align:right;font-size:14px;font-weight:bold;margin:12px 0">TOTAL: R$ ${total.toFixed(2)}</div><div class="section"><b>Forma de Pgto:</b> ${pgto} ${obs?'| Obs: '+obs:''}</div><div style="text-align:center;margin-top:20px;font-size:10px;color:#555">Documento de controle interno — Sem validade fiscal.<br>${emNome} — ${new Date().toLocaleString('pt-BR')}</div><div style="text-align:center;margin-top:16px"><button onclick="window.print()" style="font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border:1px solid #999;border-radius:6px;background:#f2f2f2;cursor:pointer">🖨️ Imprimir</button></div><style>@media print{button{display:none}}</style></body></html>`;const w=window.open('','','width=900,height=700');w.document.write(html);w.document.close();DB.config.nextNF++;DB.nfs.push({num,total,destNome,data:nowDate()});saveDB();toast('Nota Fiscal gerada!','success');}
 
-function loadMarketplace(){['ml','sp','fb'].forEach(c=>renderMKTProdutos(c));renderPedidosMKT();}
+function loadMarketplace(){
+  renderMKTProdutos('fb');
+  renderPedidosMKT();
+  const sel=document.getElementById('mkt-venda-produto');
+  sel.innerHTML='<option value="">Selecione</option>'+DB.produtos.map(p=>`<option value="${p.id}">${p.nome} (estoque: ${p.qtd})</option>`).join('');
+  const selPgto=document.getElementById('mkt-venda-pgto');
+  selPgto.innerHTML=(DB.formasPgto||['Dinheiro','PIX','Cartão de Crédito','Cartão de Débito','Transferência','Boleto']).map(f=>`<option>${f}</option>`).join('');
+  document.getElementById('mkt-venda-qtd').value=1;
+  document.getElementById('mkt-venda-valor').value='';
+}
+function atualizarValorVendaMKT(){
+  const prodId=parseInt(document.getElementById('mkt-venda-produto').value),qtd=parseInt(document.getElementById('mkt-venda-qtd').value)||1;
+  const prod=DB.produtos.find(p=>p.id===prodId);
+  if(prod)document.getElementById('mkt-venda-valor').value=(prod.venda*qtd).toFixed(2);
+}
+function registrarVendaMKT(e){
+  e.preventDefault();
+  const prodId=parseInt(document.getElementById('mkt-venda-produto').value),qtd=parseInt(document.getElementById('mkt-venda-qtd').value)||0,valor=parseFloat(document.getElementById('mkt-venda-valor').value)||0,pgto=document.getElementById('mkt-venda-pgto').value;
+  const prod=DB.produtos.find(p=>p.id===prodId);
+  if(!prod)return toast('Selecione um produto.','warning');
+  if(qtd<=0)return toast('Quantidade inválida.','warning');
+  if(prod.qtd<qtd)return toast(`Estoque insuficiente. Disponível: ${prod.qtd}`,'error');
+  prod.qtd-=qtd;
+  if(!prod.movs)prod.movs=[];
+  prod.movs.push({tipo:'saida',qtd,motivo:'Venda Facebook Marketplace',data:nowStr(),usuario:usuarioLogado.nome});
+  const id='FB-'+Date.now().toString().slice(-6);
+  DB.pedidosMKT.unshift({id,canal:'Facebook Marketplace',produto:prod.nome,sku:prod.sku,qtd,valor,status:'entregue',data:nowDate()});
+  addAtividade(`Venda ${id} registrada e baixada — ${prod.nome}`,'var(--green)');
+  if(document.getElementById('mkt-venda-lancar-fin').checked&&valor>0){
+    DB.financeiro.push({id:Date.now(),desc:`Venda FB Marketplace — ${prod.nome}`,tipo:'receita',cat:'Marketplace',valor,data:nowDate(),pgto,obs:`Pedido ${id}`});
+  }
+  saveDB();loadMarketplace();atualizarBadges();
+  toast(`Venda registrada e baixa feita! Restam ${prod.qtd} em estoque.`,'success');
+}
 function renderMKTProdutos(canal){const tbody=document.getElementById('mkt-'+canal+'-tbody');tbody.innerHTML=DB.produtos.map(p=>{const key=canal+'_'+p.id,preco=DB.precosMKT[key]||p.venda,ativo=DB.ativosMKT[key]!==false;return`<tr><td>${p.nome}</td><td>${fmtMoeda(p.venda)}</td><td><input type="number" step="0.01" value="${preco}" style="width:90px;padding:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--white)" onchange="DB.precosMKT['${key}']=parseFloat(this.value)||0;saveDB()"></td><td><label class="toggle"><input type="checkbox" ${ativo?'checked':''} onchange="DB.ativosMKT['${key}']=this.checked;saveDB()"><span class="toggle-slider"></span></label></td><td class="${p.qtd<=p.min?'stock-critical':'stock-ok'}">${p.qtd}</td></tr>`;}).join('');}
 function sincronizarMKT(nome,canal){const logId='mkt-'+canal+'-log',log=document.getElementById(logId),ts=new Date().toLocaleString('pt-BR'),ativos=DB.produtos.filter(p=>DB.ativosMKT[canal+'_'+p.id]!==false).length;log.textContent+=`\n[${ts}] Sincronizando ${ativos} produtos com ${nome}...`;setTimeout(()=>{log.textContent+=`\n[${ts}] ✅ ${ativos} produto(s) atualizados.`;log.scrollTop=log.scrollHeight;toast(`${nome}: sincronização concluída!`,'success');},1200);}
-function renderPedidosMKT(){const tbody=document.getElementById('mkt-pedidos-tbody'),statusMap={novo:'badge-yellow','em separação':'badge-blue',enviado:'badge-purple',entregue:'badge-green',cancelado:'badge-red'};tbody.innerHTML=DB.pedidosMKT.map(p=>`<tr><td style="font-family:monospace;color:var(--red)">${p.id}</td><td>${p.canal}</td><td>${p.produto}</td><td style="text-align:center">${p.qtd}</td><td style="color:var(--green)">${fmtMoeda(p.valor)}</td><td><span class="badge ${statusMap[p.status]||'badge-gray'}">${p.status}</span></td><td><div style="display:flex;gap:4px">${p.status==='novo'?`<button class="btn btn-success btn-xs" onclick="avancarPedido('${p.id}')">▶ Separar</button>`:''}${p.status==='em separação'?`<button class="btn btn-primary btn-xs" onclick="avancarPedido('${p.id}')">📦 Enviar</button>`:''}${p.status==='enviado'?`<button class="btn btn-ghost btn-xs" onclick="avancarPedido('${p.id}')">✅ Entregue</button>`:''}</div></td></tr>`).join('');}
+function renderPedidosMKT(){const tbody=document.getElementById('mkt-pedidos-tbody'),statusMap={novo:'badge-yellow','em separação':'badge-blue',enviado:'badge-purple',entregue:'badge-green',cancelado:'badge-red'};tbody.innerHTML=DB.pedidosMKT.map(p=>`<tr><td style="font-family:monospace;color:var(--red)">${p.id}</td><td>${p.canal}</td><td>${p.produto}</td><td style="text-align:center">${p.qtd}</td><td style="color:var(--green)">${fmtMoeda(p.valor)}</td><td><span class="badge ${statusMap[p.status]||'badge-gray'}">${p.status}</span></td></tr>`).join('');}
 function avancarPedido(id){const p=DB.pedidosMKT.find(x=>x.id===id);if(!p)return;const prox={novo:'em separação','em separação':'enviado',enviado:'entregue'},ant=p.status;p.status=prox[p.status]||p.status;if(p.status==='entregue'&&ant!=='entregue'){const prod=DB.produtos.find(x=>x.sku===p.sku);if(prod){prod.qtd=Math.max(0,prod.qtd-p.qtd);addAtividade(`Pedido ${id} entregue — baixa em ${p.produto}`,'var(--yellow)');}}saveDB();renderPedidosMKT();atualizarBadges();toast(`Pedido ${id} → ${p.status}`,'success');}
 function gerarPedidoSimulado(){const canais=['Mercado Livre','Shopee','Facebook Marketplace'],prod=DB.produtos[Math.floor(Math.random()*DB.produtos.length)],canal=canais[Math.floor(Math.random()*canais.length)],sigla={' Mercado Livre':'ML',Shopee:'SP','Facebook Marketplace':'FB'}[canal]||(canal.includes('Livre')?'ML':canal==='Shopee'?'SP':'FB'),id=sigla+'-'+Date.now().toString().slice(-4);DB.pedidosMKT.unshift({id,canal,produto:prod.nome,sku:prod.sku,qtd:1,valor:prod.venda,status:'novo',data:nowDate()});saveDB();renderPedidosMKT();toast(`Pedido simulado: ${id}`,'success');}
 
