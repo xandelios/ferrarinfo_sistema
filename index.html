@@ -234,6 +234,10 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
       <div class="login-error" id="login-error"></div>
     </form>
     <div style="text-align:center;margin-top:14px"><a href="#" onclick="abrirRecuperarSenha();return false;" style="font-size:12px;color:var(--gray2);text-decoration:underline">Esqueci minha senha</a></div>
+    <div id="login-download-desktop" style="display:none;text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <a id="login-download-desktop-link" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">⬇️ FerrarInfo Desktop — Instalar</a>
+      <div style="font-size:11px;color:var(--gray2);margin-top:6px">Baixe o programa pra usar no PC da loja com impressão automática</div>
+    </div>
   </div>
 </div>
 <div class="modal-overlay" id="modal-recuperar-senha" style="display:none">
@@ -896,7 +900,7 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
     </div>
     <div class="card" style="margin-top:16px;border-color:var(--red)">
       <div class="card-title" style="color:var(--red)">⚠️ Zona de Risco</div>
-      <p style="font-size:13px;color:var(--gray2);margin-bottom:14px">Apaga TODAS as Ordens de Serviço, Clientes, Orçamentos, Produtos/Estoque, Financeiro, Cupons, Notas Fiscais, Marketplace e Vendas a Prazo — pra começar a usar o sistema do zero na loja de verdade. Suas Configurações, Usuários e Login continuam. Um backup automático é feito antes.</p>
+      <p style="font-size:13px;color:var(--gray2);margin-bottom:14px">Apaga TODAS as Ordens de Serviço, Clientes, Orçamentos, Produtos/Estoque, Financeiro, Cupons, Notas Fiscais, Marketplace, Vendas a Prazo, Dias Trabalhados (Comissões) e Lembretes de Manutenção — pra começar a usar o sistema do zero na loja de verdade. Suas Configurações, Usuários e Login continuam. Um backup automático é feito antes.</p>
       <button class="btn btn-danger" onclick="zerarSistema()">🗑️ Zerar Sistema (começar do zero)</button>
     </div>
   </div>
@@ -977,7 +981,7 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
         <div id="zerar-senha-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
       </div>
       <div id="zerar-passo-confirma" style="display:none">
-        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Isso vai apagar TODAS as Ordens de Serviço, Clientes, Orçamentos, Produtos/Estoque, Financeiro, Cupons, Notas Fiscais, Marketplace e Vendas a Prazo — deixando o sistema zerado pra você começar na loja de verdade. Suas Configurações, Usuários e Login continuam. Um backup é feito automaticamente antes, e dá pra restaurar depois se precisar.</p>
+        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Isso vai apagar TODAS as Ordens de Serviço, Clientes, Orçamentos, Produtos/Estoque, Financeiro, Cupons, Notas Fiscais, Marketplace, Vendas a Prazo, Dias Trabalhados (Comissões) e Lembretes de Manutenção — deixando o sistema zerado pra você começar na loja de verdade. Suas Configurações, Usuários e Login continuam. Um backup é feito automaticamente antes, e dá pra restaurar depois se precisar.</p>
         <div class="form-group"><label class="form-label">Para confirmar, digite ZERAR (tudo em maiúsculo)</label><input class="form-control" id="zerar-confirma-input" placeholder="ZERAR" onkeydown="if(event.key==='Enter')confirmarZerarDefinitivo();"></div>
         <div id="zerar-confirma-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
       </div>
@@ -1299,7 +1303,7 @@ function confirmarZerarDefinitivo(){
   if(digitado!=='ZERAR'){document.getElementById('zerar-confirma-erro').textContent='Digite ZERAR (maiúsculo) exatamente para confirmar.';return;}
   fecharModal('modal-zerar-sistema');
   fazerBackupManualSilencioso().then(()=>{
-    DB.ordens=[];DB.clientes=[];DB.orcamentos=[];DB.produtos=[];DB.financeiro=[];DB.pedidosMKT=[];DB.precosMKT={};DB.ativosMKT={};DB.cupons=[];DB.nfs=[];DB.clientesProm=[];DB.vendasProm=[];DB.contasMes=[];DB.atividade=[];
+    DB.ordens=[];DB.clientes=[];DB.orcamentos=[];DB.produtos=[];DB.financeiro=[];DB.pedidosMKT=[];DB.precosMKT={};DB.ativosMKT={};DB.cupons=[];DB.nfs=[];DB.clientesProm=[];DB.vendasProm=[];DB.contasMes=[];DB.atividade=[];DB.diarias=[];DB.lembretesManutencao=[];
     DB.config.nextOS=1001;DB.config.nextOrc=1;DB.config.nextNF=1;DB.config.nextCupom=1;
     saveDB();
     toast('Sistema zerado! Pronto pra começar na loja.','success');
@@ -3145,7 +3149,25 @@ function confirmarSaidaOS(){
   setTimeout(()=>document.getElementById('leitor-saida-input')?.focus(),150);
 }
 
-(async function boot(){await initDB();iniciarRealtime();if(checkSession()){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='block';initApp();}else{const logoSrc=DB.config.logo?'data:image/jpeg;base64,'+DB.config.logo:'';document.getElementById('login-logo-img').src=logoSrc;}}());
+// Link do instalador do FerrarInfo Desktop (.exe), mostrado só na versão web (Vercel).
+// Troque a URL abaixo quando o .exe estiver hospedado (ex: um Release do GitHub).
+const URL_DOWNLOAD_DESKTOP='https://github.com/xandelios/ferrarinfo_sistema/releases/latest/download/FerrarInfo.Setup.exe';
+(async function boot(){
+  await initDB();iniciarRealtime();
+  if(checkSession()){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+    initApp();
+  }else{
+    const logoSrc=DB.config.logo?'data:image/jpeg;base64,'+DB.config.logo:'';
+    document.getElementById('login-logo-img').src=logoSrc;
+  }
+  // Só mostra o botão de baixar o Desktop quando NÃO está rodando dentro do app Electron.
+  if(!window.ferrarinfoPrint){
+    document.getElementById('login-download-desktop-link').href=URL_DOWNLOAD_DESKTOP;
+    document.getElementById('login-download-desktop').style.display='';
+  }
+}());
 </script>
 </body>
 </html>
