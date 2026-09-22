@@ -2069,7 +2069,8 @@ function abrirOS(id){
   const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0);
   const totalServicos=os.servicos.reduce((a,s)=>a+s.val*(s.qtd||1),0);
   const maoObraExtra=Math.max(0,(os.maoObra||0)-totalServicos);
-  const totalOS=totalPecas+totalServicos+maoObraExtra;
+  const desconto=os.desconto||0;
+  const totalOS=Math.max(0,totalPecas+totalServicos+maoObraExtra-desconto);
   document.getElementById('modal-os-body').innerHTML=`
     <datalist id="dl-servicos">${listaAutocompleteServicos().map(n=>`<option value="${n}">`).join('')}</datalist>
     <datalist id="dl-pecas">${listaAutocompletePecas().map(n=>`<option value="${n}">`).join('')}</datalist>
@@ -2106,7 +2107,8 @@ function abrirOS(id){
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid var(--border);margin-top:10px"><span>Peças + Serviços</span><span>${fmtMoeda(totalPecas+totalServicos)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;align-items:center"><span>Mão de Obra Extra (opcional)</span><input type="number" id="os-mao-obra-extra" value="${maoObraExtra}" oninput="document.getElementById('os-total-preview').textContent=fmtMoeda(${totalPecas}+${totalServicos}+(parseFloat(this.value)||0))" style="width:80px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--white);text-align:right"></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;align-items:center"><span>Mão de Obra Extra (opcional)</span><input type="number" id="os-mao-obra-extra" value="${maoObraExtra}" oninput="atualizarTotalPreviewOS(${totalPecas},${totalServicos})" style="width:80px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--white);text-align:right"></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;align-items:center"><span>💸 Desconto (opcional)</span><input type="number" id="os-desconto" min="0" value="${desconto}" oninput="atualizarTotalPreviewOS(${totalPecas},${totalServicos})" style="width:80px;padding:2px 6px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--white);text-align:right"></div>
         <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 0;border-top:1px solid var(--border);color:var(--green)"><span>Total</span><span id="os-total-preview">${fmtMoeda(totalOS)}</span></div>
       </div>
       <div>
@@ -2226,6 +2228,12 @@ function renderParcelasReceber(){
     </div>
   </div>`;}).join('');
 }
+function atualizarTotalPreviewOS(totalPecas,totalServicos){
+  const extra=parseFloat(document.getElementById('os-mao-obra-extra').value)||0;
+  const desconto=parseFloat(document.getElementById('os-desconto').value)||0;
+  const total=Math.max(0,totalPecas+totalServicos+extra-desconto);
+  document.getElementById('os-total-preview').textContent=fmtMoeda(total);
+}
 function autoPrecoServico(){
   const nome=document.getElementById('os-servico-nome').value.trim(),campoVal=document.getElementById('os-servico-val');
   const achado=DB.catalogoServicos.find(x=>x.nome.toLowerCase()===nome.toLowerCase());
@@ -2268,7 +2276,7 @@ function enviarWhatsAppAndamento(id){
   const msg=textos[os.status]||`Olá, ${os.cliente}! 👋\n\nPassando para atualizar sobre o seu ${equip} (OS #${os.id}): status atual — ${os.status}. Qualquer dúvida, é só chamar!`;
   window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`,'_blank');
 }
-function salvarAlteracoesOS(id){const os=DB.ordens.find(o=>o.id===id),novoStatus=document.getElementById('os-status').value;if(novoStatus!==os.status){os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:`Status → ${novoStatus}`,status:novoStatus});addAtividade(`OS #${id} → ${novoStatus}`,'var(--blue)');}os.status=novoStatus;os.laudo=document.getElementById('os-laudo').value;os.tecnico=document.getElementById('os-tecnico-sel').value;os.prazo=document.getElementById('os-prazo-inp').value;os.garantiaDias=parseInt(document.getElementById('os-garantia-inp').value)||0;const totalServicos=(os.servicos||[]).reduce((a,s)=>a+s.val*(s.qtd||1),0),extra=parseFloat(document.getElementById('os-mao-obra-extra').value)||0;os.maoObra=totalServicos+extra;if(novoStatus==='Entregue')registrarLembretePastaTermica(os);saveDB();fecharModal('modal-os');filtrarOS();atualizarBadges();loadDashboard();toast('OS atualizada!','success');}
+function salvarAlteracoesOS(id){const os=DB.ordens.find(o=>o.id===id),novoStatus=document.getElementById('os-status').value;if(novoStatus!==os.status){os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:`Status → ${novoStatus}`,status:novoStatus});addAtividade(`OS #${id} → ${novoStatus}`,'var(--blue)');}os.status=novoStatus;os.laudo=document.getElementById('os-laudo').value;os.tecnico=document.getElementById('os-tecnico-sel').value;os.prazo=document.getElementById('os-prazo-inp').value;os.garantiaDias=parseInt(document.getElementById('os-garantia-inp').value)||0;const totalServicos=(os.servicos||[]).reduce((a,s)=>a+s.val*(s.qtd||1),0),extra=parseFloat(document.getElementById('os-mao-obra-extra').value)||0;os.maoObra=totalServicos+extra;os.desconto=parseFloat(document.getElementById('os-desconto').value)||0;if(novoStatus==='Entregue')registrarLembretePastaTermica(os);saveDB();fecharModal('modal-os');filtrarOS();atualizarBadges();loadDashboard();toast('OS atualizada!','success');}
 
 function loadOrcamentos(){filtrarOrcamentos();}
 function calcTotalOrc(o){const sub=o.itens.reduce((a,i)=>a+(i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100)),0);return sub-(sub*(o.descTotal||0)/100);}
@@ -3088,6 +3096,37 @@ function manterFocoLeitor(){
 }
 setInterval(manterFocoLeitor,1000);
 
+// Captura global de leitura de código de barras/QR por leitor USB (emula teclado),
+// funcionando mesmo se o foco estiver em outro elemento da tela (ex: o usuário clicou
+// em um botão ou numa linha da tabela antes de escanear). Um leitor USB digita todos os
+// caracteres em rajada muito rápida e finaliza com Enter — diferente de alguém digitando
+// manualmente. Por isso só interceptamos quando: (1) o usuário NÃO está digitando de
+// propósito em um campo de texto/textarea/select, e (2) as teclas chegaram rápido o
+// suficiente para parecer um leitor (não uma pessoa datilografando).
+(function(){
+  let buffer='',ultimoTempo=0;
+  const LIMITE_INTERVALO_MS=50; // leitor USB manda caracteres em poucos ms; humano digita bem mais devagar
+  document.addEventListener('keydown',function(e){
+    if(!usuarioLogado)return;
+    if(!['ADM','VENDAS','TECNICO'].includes(usuarioLogado?.perfil))return;
+    const ativo=document.activeElement;
+    const tag=ativo?ativo.tagName:'';
+    const editavel=ativo&&(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||ativo.isContentEditable);
+    // Os próprios campos do leitor (flutuante/oculto) já tratam o Enter no onkeydown deles.
+    if(editavel&&ativo.id!=='leitor-scan-oculto'&&ativo.id!=='leitor-saida-input')return;
+    if(editavel)return; // evita disparo duplicado quando o campo já processa o Enter sozinho
+    const agora=Date.now();
+    if(agora-ultimoTempo>LIMITE_INTERVALO_MS)buffer='';
+    ultimoTempo=agora;
+    if(e.key==='Enter'){
+      if(buffer.trim())processarLeituraSaida(buffer);
+      buffer='';
+      return;
+    }
+    if(e.key.length===1)buffer+=e.key; // ignora teclas de controle (Shift, Tab, setas etc.)
+  });
+})();
+
 function manterFocoEstoqueScanner(){
   const inp=document.getElementById('est-scan-input');
   if(!inp)return;
@@ -3123,9 +3162,10 @@ function processarLeituraSaida(codigoOriginal){
 function abrirModalSaidaOS(id){
   const os=DB.ordens.find(o=>o.id===id);if(!os)return;
   _saidaOsId=id;
-  const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0),total=totalPecas+(os.maoObra||0);
+  const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0),total=Math.max(0,totalPecas+(os.maoObra||0)-(os.desconto||0));
   document.getElementById('saida-os-title').textContent=`📷 Saída — OS #${os.id}`;
-  document.getElementById('saida-os-resumo').innerHTML=`<div><strong>Cliente:</strong> ${os.cliente}</div><div><strong>Equipamento:</strong> ${[os.tipo,os.marca,os.modelo].filter(Boolean).join(' ')||'-'}</div><div style="margin-top:8px;font-size:18px;font-weight:800;color:var(--green)">Total: ${fmtMoeda(total)}</div>`;
+  const descontoLinha=os.desconto>0?`<div style="font-size:13px;color:var(--gray2)">Desconto aplicado: -${fmtMoeda(os.desconto)}</div>`:'';
+  document.getElementById('saida-os-resumo').innerHTML=`<div><strong>Cliente:</strong> ${os.cliente}</div><div><strong>Equipamento:</strong> ${[os.tipo,os.marca,os.modelo].filter(Boolean).join(' ')||'-'}</div>${descontoLinha}<div style="margin-top:8px;font-size:18px;font-weight:800;color:var(--green)">Total: ${fmtMoeda(total)}</div>`;
   const sel=document.getElementById('saida-os-pgto');
   sel.innerHTML=(DB.formasPgto||['Dinheiro','PIX','Cartão de Crédito','Cartão de Débito','Transferência','Boleto']).map(f=>`<option>${f}</option>`).join('');
   document.getElementById('saida-os-confirmar-btn').onclick=confirmarSaidaOS;
@@ -3133,7 +3173,7 @@ function abrirModalSaidaOS(id){
 }
 function confirmarSaidaOS(){
   const os=DB.ordens.find(o=>o.id===_saidaOsId);if(!os)return;
-  const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0),total=totalPecas+(os.maoObra||0);
+  const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0),total=Math.max(0,totalPecas+(os.maoObra||0)-(os.desconto||0));
   const pgto=document.getElementById('saida-os-pgto').value;
   os.status='Entregue';
   os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:'Saída via QR Code — Entregue e faturado',status:'Entregue'});
