@@ -1889,12 +1889,22 @@ function ferrarinfoImprimir(html,larguraMM,alturaMM,impressoraKey,winW,winH,agua
   w.document.write(html);w.document.close();w.focus();
   return Promise.resolve();
 }
+// Monta um nome identificável para a janela/aba de impressão — usado tanto como título
+// (aparece na barra de tarefas/aba) quanto como sugestão de nome de arquivo quando a
+// pessoa escolhe "Salvar como PDF" na hora de imprimir. Sem isso, tudo salvava como
+// "FERRARINFO_PRONTO" (um sinal técnico interno, sem nenhuma serventia pra organizar depois).
+function tituloImpressao(prefixo,os,dataRef){
+  const nomeLimpo=(os.cliente||'').replace(/[\\/:*?"<>|]/g,'').trim()||'Cliente';
+  const dataLimpa=fmtData(dataRef||os.data).replace(/\//g,'-');
+  return `${prefixo} ${os.id} - ${nomeLimpo} - ${dataLimpa}`;
+}
 // Comprovante de entrada — impressora térmica de cupom (ex: Elgin i9, 80mm).
 function imprimirComprovante(os){
   const RECIBO_LARGURA_MM=DB.config.reciboLarguraMM||80;
   const cfg=DB.config;
   const serie=os.serie?` · Série: ${os.serie}`:'';
   const codigo='OS'+os.id;
+  const titulo=tituloImpressao('Comprovante Entrada OS',os);
   const html=`<html><head><style>
   @page{size:${RECIBO_LARGURA_MM}mm auto;margin:0}
   *{box-sizing:border-box}
@@ -1907,12 +1917,41 @@ function imprimirComprovante(os){
   </style></head><body><div class="c b" style="font-size:16px">${cfg.nome}</div><div class="c" style="font-size:11px">${cfg.cnpj} · ${cfg.endereco}</div><div class="l"></div><div class="c b">COMPROVANTE DE ENTRADA — OS Nº ${os.id}</div><div class="c" style="font-size:11px">${fmtData(os.data)}</div><div class="l"></div><div><b>Cliente:</b> ${os.cliente}${os.tel?' · '+os.tel:''}</div><div><b>Equip.:</b> ${[os.tipo,os.marca,os.modelo].filter(Boolean).join(' ')}${serie}</div><div><b>Problema:</b> ${os.problema}</div><div><b>Acessórios:</b> ${os.acessorios.join(', ')||'Nenhum'}</div><div class="l"></div><div class="c b">APRESENTE ESTE TICKET NA RETIRADA</div><div class="qr-box" id="qr"></div><div class="c" style="font-size:10px">Escaneie o QR para dar saída na entrega</div><div class="l"></div><div class="c" style="font-size:11px">${cfg.msgCupom}</div><div class="no-print"><button onclick="window.print()">🖨️ Imprimir</button></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
   <script>
+    document.title=${JSON.stringify(titulo)};
     try{ new QRCode(document.getElementById('qr'), {text:'${codigo}', width:90, height:90, correctLevel:QRCode.CorrectLevel.M}); }
     catch(e){ document.getElementById('qr').textContent='${codigo}'; }
-    document.title='FERRARINFO_PRONTO';
+    document.title=${JSON.stringify(titulo)}+'​FERRARINFO_PRONTO';
+    setTimeout(()=>{document.title=${JSON.stringify(titulo)};},0);
   <\/script>
   </body></html>`;
   return ferrarinfoImprimir(html,RECIBO_LARGURA_MM,130,'impressoraComprovante',340,650,true);
+}
+// Comprovante de saída/entrega — impresso ao confirmar a saída da OS (manual ou via QR Code),
+// na mesma impressora térmica de cupom. Mostra o que foi feito, o valor pago, a forma de
+// pagamento e confirma a entrega ao cliente — diferente do Comprovante de Entrada.
+function imprimirComprovanteSaida(os,pgto,total,desconto){
+  const RECIBO_LARGURA_MM=DB.config.reciboLarguraMM||80;
+  const cfg=DB.config;
+  const totalPecas=os.pecas.reduce((a,p)=>a+(p.val*p.qtd),0);
+  const linhasServicos=(os.servicos||[]).map(s=>`<div style="display:flex;justify-content:space-between"><span>${s.nome}${(s.qtd||1)>1?` (${s.qtd}x)`:''}</span><span>${fmtMoeda(s.val*(s.qtd||1))}</span></div>`).join('');
+  const linhasPecas=(os.pecas||[]).map(p=>`<div style="display:flex;justify-content:space-between"><span>${p.nome} (${p.qtd}x)</span><span>${fmtMoeda(p.val*p.qtd)}</span></div>`).join('');
+  const linhaDesconto=desconto>0?`<div style="display:flex;justify-content:space-between"><span>Desconto</span><span>-${fmtMoeda(desconto)}</span></div>`:'';
+  const titulo=tituloImpressao('Comprovante Entrega OS',os,nowDate());
+  const html=`<html><head><style>
+  @page{size:${RECIBO_LARGURA_MM}mm auto;margin:0}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:'Courier New',monospace;font-size:13px;line-height:1.25;color:#000;padding:2mm 2.5mm;width:${RECIBO_LARGURA_MM}mm}
+  .c{text-align:center}.b{font-weight:bold}.l{border-top:1px dashed #000;margin:4px 0}
+  .no-print{margin-top:10px;text-align:center}.no-print button{font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border:1px solid #999;border-radius:6px;background:#f2f2f2;cursor:pointer}
+  @media print{.no-print{display:none};body{background:#fff}}
+  </style></head><body><div class="c b" style="font-size:16px">${cfg.nome}</div><div class="c" style="font-size:11px">${cfg.cnpj} · ${cfg.endereco}</div><div class="l"></div><div class="c b">COMPROVANTE DE ENTREGA — OS Nº ${os.id}</div><div class="c" style="font-size:11px">${nowStr()}</div><div class="l"></div><div><b>Cliente:</b> ${os.cliente}${os.tel?' · '+os.tel:''}</div><div><b>Equip.:</b> ${[os.tipo,os.marca,os.modelo].filter(Boolean).join(' ')}</div><div class="l"></div>${linhasServicos}${linhasPecas}${linhaDesconto}<div class="l"></div><div style="display:flex;justify-content:space-between;font-weight:bold;font-size:15px"><span>TOTAL</span><span>${fmtMoeda(total)}</span></div><div style="display:flex;justify-content:space-between;margin-top:2px"><span>Forma de pagamento</span><span>${pgto}</span></div><div class="l"></div><div class="c b">✔ EQUIPAMENTO ENTREGUE</div><div class="l"></div><div class="c" style="font-size:11px">${cfg.msgCupom||'Obrigado pela preferência!'}</div><div class="no-print"><button onclick="window.print()">🖨️ Imprimir</button></div>
+  <script>
+    document.title=${JSON.stringify(titulo)}+'​FERRARINFO_PRONTO';
+    setTimeout(()=>{document.title=${JSON.stringify(titulo)};},0);
+  <\/script>
+  </body></html>`;
+  return ferrarinfoImprimir(html,RECIBO_LARGURA_MM,110,'impressoraComprovante',340,600,true);
 }
 // Etiqueta de identificação do aparelho — impressa na MESMA térmica de cupom (ex: Elgin i7/i9),
 // logo em seguida do comprovante do cliente. Sai como um tíquete curto, sem exigir impressora
@@ -1920,6 +1959,7 @@ function imprimirComprovante(os){
 function imprimirEtiquetaOS(os){
   const LARG=DB.config.reciboLarguraMM||80;
   const codigo='OS'+os.id;
+  const titulo=tituloImpressao('Etiqueta OS',os);
   const acessorios=(os.acessorios&&os.acessorios.length)?os.acessorios.join(', '):'Nenhum';
   const html=`<html><head><style>
   @page{size:${LARG}mm auto;margin:0}
@@ -1950,9 +1990,11 @@ function imprimirEtiquetaOS(os){
   <div class="no-print"><button onclick="window.print()">🖨️ Imprimir</button></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
   <script>
+    document.title=${JSON.stringify(titulo)};
     try{ new QRCode(document.getElementById('qr'), {text:'${codigo}', width:75, height:75, correctLevel:QRCode.CorrectLevel.M}); }
     catch(e){ document.getElementById('qr').textContent='${codigo}'; }
-    document.title='FERRARINFO_PRONTO';
+    document.title=${JSON.stringify(titulo)}+'​FERRARINFO_PRONTO';
+    setTimeout(()=>{document.title=${JSON.stringify(titulo)};},0);
   <\/script>
   </body></html>`;
   return ferrarinfoImprimir(html,LARG,120,'impressoraComprovante',340,600,true);
@@ -1963,6 +2005,7 @@ function imprimirEtiqueta(os){
   const LABEL_WIDTH_MM=DB.config.etiquetaLarguraMM||50;
   const LABEL_HEIGHT_MM=DB.config.etiquetaAlturaMM||30;
   const codigo='OS'+os.id;
+  const titulo=tituloImpressao('Etiqueta OS',os);
   const acessorios=(os.acessorios&&os.acessorios.length)?os.acessorios.join(', '):'Nenhum';
   const html=`<html><head><style>
     @page{size:${LABEL_WIDTH_MM}mm ${LABEL_HEIGHT_MM}mm;margin:0}
@@ -1997,10 +2040,12 @@ function imprimirEtiqueta(os){
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Etiqueta</button></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
     <script>
+      document.title=${JSON.stringify(titulo)};
       try{
         new QRCode(document.getElementById('qr'), {text:'${codigo}', width:110, height:110, correctLevel:QRCode.CorrectLevel.M});
       }catch(e){ document.getElementById('qr').textContent='${codigo}'; }
-      document.title='FERRARINFO_PRONTO';
+      document.title=${JSON.stringify(titulo)}+'​FERRARINFO_PRONTO';
+      setTimeout(()=>{document.title=${JSON.stringify(titulo)};},0);
     <\/script>
   </body></html>`;
   ferrarinfoImprimir(html,LABEL_WIDTH_MM,LABEL_HEIGHT_MM,'impressoraEtiqueta',420,380,true,true);
@@ -3097,15 +3142,17 @@ function manterFocoLeitor(){
 setInterval(manterFocoLeitor,1000);
 
 // Captura global de leitura de código de barras/QR por leitor USB (emula teclado),
-// funcionando mesmo se o foco estiver em outro elemento da tela (ex: o usuário clicou
-// em um botão ou numa linha da tabela antes de escanear). Um leitor USB digita todos os
-// caracteres em rajada muito rápida e finaliza com Enter — diferente de alguém digitando
-// manualmente. Por isso só interceptamos quando: (1) o usuário NÃO está digitando de
-// propósito em um campo de texto/textarea/select, e (2) as teclas chegaram rápido o
-// suficiente para parecer um leitor (não uma pessoa datilografando).
+// funcionando em QUALQUER tela do sistema, sem precisar navegar até lugar nenhum nem
+// clicar no botão 📷 antes — o leitor já fica "pronto" assim que o usuário loga.
+// Como nada precisa estar focado para isso funcionar, a regra é simples: se o usuário
+// não está de propósito digitando dentro de um campo de texto/textarea/select (e não é
+// um dos próprios campos do leitor, que já tratam o Enter sozinhos), qualquer sequência
+// de teclas terminada em Enter é tratada como uma leitura. Não dependemos da velocidade
+// entre teclas — leitores USB mais lentos/baratos variam bastante nisso — só de um tempo
+// ocioso razoável (700ms) para saber quando uma leitura "esfriou" e começar um buffer novo.
 (function(){
   let buffer='',ultimoTempo=0;
-  const LIMITE_INTERVALO_MS=50; // leitor USB manda caracteres em poucos ms; humano digita bem mais devagar
+  const LIMITE_OCIOSO_MS=700;
   document.addEventListener('keydown',function(e){
     if(!usuarioLogado)return;
     if(!['ADM','VENDAS','TECNICO'].includes(usuarioLogado?.perfil))return;
@@ -3113,10 +3160,16 @@ setInterval(manterFocoLeitor,1000);
     const tag=ativo?ativo.tagName:'';
     const editavel=ativo&&(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||ativo.isContentEditable);
     // Os próprios campos do leitor (flutuante/oculto) já tratam o Enter no onkeydown deles.
-    if(editavel&&ativo.id!=='leitor-scan-oculto'&&ativo.id!=='leitor-saida-input')return;
-    if(editavel)return; // evita disparo duplicado quando o campo já processa o Enter sozinho
+    if(editavel)return; // usuário digitando de propósito em algum campo — não interceptar
+    // A tela de Estoque tem seu próprio leitor dedicado (entrada/saída de produto,
+    // não de OS) — não interceptar por aqui pra não brigar com aquele fluxo.
+    const pgEtqAtiva=document.getElementById('page-estoque');
+    if(pgEtqAtiva&&pgEtqAtiva.classList.contains('active'))return;
+    // Evita abrir um modal de saída por cima de outro modal já aberto (ex: editando uma
+    // OS manualmente e apertando Enter sem querer não deve disparar nada).
+    if(document.querySelector('.modal-overlay[style*="flex"]'))return;
     const agora=Date.now();
-    if(agora-ultimoTempo>LIMITE_INTERVALO_MS)buffer='';
+    if(agora-ultimoTempo>LIMITE_OCIOSO_MS)buffer='';
     ultimoTempo=agora;
     if(e.key==='Enter'){
       if(buffer.trim())processarLeituraSaida(buffer);
@@ -3180,6 +3233,7 @@ function confirmarSaidaOS(){
   if(total>0)DB.financeiro.push({id:Date.now(),desc:`OS #${os.id} — ${os.cliente}`,tipo:'receita',cat:'Serviço de reparo',categoriaServico:os.categoriaServico||detectarCategoriaServico(os),valor:total,data:nowDate(),pgto,obs:'Baixa automática via leitura de QR Code'});
   registrarLembretePastaTermica(os);
   saveDB();fecharModal('modal-saida-os');atualizarBadges();
+  imprimirComprovanteSaida(os,pgto,total,os.desconto||0);
   const pgOS=document.getElementById('page-os'),pgDash=document.getElementById('page-dashboard'),pgFin=document.getElementById('page-financeiro'),pgEtq=document.getElementById('page-etiquetas');
   if(pgOS&&pgOS.classList.contains('active'))filtrarOS();
   if(pgDash&&pgDash.classList.contains('active'))loadDashboard();
