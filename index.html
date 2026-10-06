@@ -287,6 +287,7 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
       <div class="nav-item" onclick="navigate('os')"><span class="nav-icon">🔧</span>Ordens de Serviço<span class="nav-badge" id="badge-os" style="display:none">0</span></div>
       <div class="nav-item" onclick="navigate('etiquetas')"><span class="nav-icon">🏷️</span>Etiquetas</div>
       <div class="nav-item" onclick="navigate('orcamentos')"><span class="nav-icon">📋</span>Orçamentos</div>
+      <div class="nav-item" onclick="navigate('lembretes')"><span class="nav-icon">🔔</span>Lembretes<span class="nav-badge" id="badge-lembretes" style="display:none">0</span></div>
     </div>
     <div class="nav-group" id="nav-estoque">
       <div class="nav-label">Produtos</div>
@@ -455,11 +456,6 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
     <div class="section-sub" style="margin-bottom:14px">Baseado nas OS já entregues e faturadas, por categoria de serviço</div>
     <div id="dash-ranking-servicos"></div>
   </div>
-  <div class="card" id="dash-lembretes-card" style="margin-top:20px">
-    <div class="card-title">🧹🌡️ Lembretes de Manutenção — Limpeza + Pasta Térmica</div>
-    <div class="section-sub" style="margin-bottom:14px">Aviso a partir de 11 meses após a limpeza/aplicação — antes do prazo máximo de 12, para não gerar correria</div>
-    <div id="dash-lembretes-pasta"></div>
-  </div>
   <div class="card" id="dash-parcelas-card" style="margin-top:20px">
     <div class="card-title">💳 Parcelas a Receber (Vendas a Prazo)</div>
     <div class="section-sub" style="margin-bottom:14px">Parcelas vencendo em até 3 dias ou já atrasadas</div>
@@ -473,7 +469,7 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
     <div class="card">
       <div class="card-title">👤 Dados do Cliente</div>
       <div class="form-grid">
-        <div class="form-group form-full"><label class="form-label">Nome Completo *</label><input class="form-control" id="ent-nome" placeholder="Nome do cliente"></div>
+        <div class="form-group form-full"><label class="form-label">Nome Completo *</label><input class="form-control" id="ent-nome" list="dl-clientes" placeholder="Nome do cliente" oninput="autoPreencherCliente()" autocomplete="off"><datalist id="dl-clientes"></datalist></div>
         <div class="form-group"><label class="form-label">CPF / CNPJ *</label><input class="form-control" id="ent-cpf" placeholder="000.000.000-00" oninput="mascaraCpfCnpj(this)" required></div>
         <div class="form-group"><label class="form-label">Telefone *</label><input class="form-control" id="ent-tel" placeholder="(44) 99999-9999" oninput="mascaraTelefone(this)"></div>
         <div class="form-group form-full"><label class="form-label">E-mail</label><input class="form-control" id="ent-email" type="email" placeholder="cliente@email.com"></div>
@@ -530,6 +526,20 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
     </select>
   </div>
   <div id="etq-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px"></div>
+</div>
+<!-- LEMBRETES DE MANUTENÇÃO -->
+<div class="page" id="page-lembretes">
+  <div class="section-header"><div><div class="section-title">🔔 Lembretes de Manutenção</div><div class="section-sub">Limpeza + Pasta Térmica — aviso a partir de 11 meses após o serviço, antes do prazo máximo de 12</div></div></div>
+  <div class="card">
+    <div class="card-title">📲 Pendentes para contato</div>
+    <div class="section-sub" style="margin-bottom:14px">Já passou (ou está passando) dos 11 meses — hora de avisar o cliente</div>
+    <div id="lemb-pendentes"></div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <div class="card-title">🗓️ Agendados (ainda não chegou a hora)</div>
+    <div class="section-sub" style="margin-bottom:14px">Serviços com data de aviso futura — aparecem aqui como controle, sem ação necessária ainda</div>
+    <div id="lemb-futuros"></div>
+  </div>
 </div>
 <!-- ORÇAMENTOS -->
 <div class="page" id="page-orcamentos">
@@ -1221,15 +1231,56 @@ function saveDB(){
   clearTimeout(_saveTimeout);
   _saveTimeout=setTimeout(()=>enviarParaNuvem(),350);
 }
+// Marca em qual momento esta OS foi alterada pela última vez — usado para decidir,
+// na hora de mesclar com a nuvem, qual versão é a mais recente (evita que o PC A
+// sobrescreva uma OS que o PC B acabou de mexer, e vice-versa).
+function marcarAtualizacaoOS(os){if(os)os.atualizadoEm=new Date().toISOString();}
+// Mescla a lista de OS local com a lista vinda da nuvem, registro por registro.
+// Regra: cada OS existente nos dois lados fica com a versão mais recentemente
+// atualizada (atualizadoEm); uma OS que só existe de um dos lados é mantida (é nova).
+function mesclarOrdens(locais,remotas){
+  const porId=new Map();
+  (remotas||[]).forEach(o=>{if(o&&o.id!=null)porId.set(o.id,o);});
+  (locais||[]).forEach(o=>{
+    if(!o||o.id==null)return;
+    const existente=porId.get(o.id);
+    if(!existente){porId.set(o.id,o);return;}
+    const tLocal=o.atualizadoEm||o.data||'';
+    const tRemota=existente.atualizadoEm||existente.data||'';
+    if(tLocal>=tRemota)porId.set(o.id,o);
+  });
+  return[...porId.values()].sort((a,b)=>b.id-a.id);
+}
+// Mescla o financeiro por união (nunca edita um lançamento já criado, só cria ou exclui).
+// Observação: como não guardamos um registro de exclusões, um lançamento excluído em um PC
+// pode reaparecer se mesclado com uma cópia de outro PC que ainda não sabia da exclusão —
+// isso é raro (exige exclusão quase simultânea à sincronização de outro PC desatualizado) e,
+// sendo dado financeiro, preferimos esse risco pequeno ao risco maior de perder lançamentos.
+function mesclarFinanceiro(locais,remotas){
+  const porId=new Map();
+  (remotas||[]).forEach(f=>{if(f&&f.id!=null)porId.set(f.id,f);});
+  (locais||[]).forEach(f=>{if(f&&f.id!=null)porId.set(f.id,f);});
+  return[...porId.values()];
+}
 async function enviarParaNuvem(){
   if(!sbClient||!navigator.onLine){_pendingSync=true;atualizarIndicadorSync(false);return;}
   _syncEmAndamento=true;atualizarIndicadorSync('sincronizando');
   try{
+    // Antes de gravar, busca o estado mais recente da nuvem e mescla OS/financeiro —
+    // assim este PC nunca apaga uma OS ou lançamento criado por outro PC enquanto
+    // estava com uma cópia desatualizada em memória (causa do bug de "sobrescrever OS").
+    const{data:remoto,error:erroLeitura}=await sbClient.from('app_state').select('data').eq('id',1).maybeSingle();
+    if(erroLeitura)throw erroLeitura;
+    if(remoto&&remoto.data){
+      DB.ordens=mesclarOrdens(DB.ordens,remoto.data.ordens);
+      DB.financeiro=mesclarFinanceiro(DB.financeiro,remoto.data.financeiro);
+    }
     const agora=new Date().toISOString();
     const{error}=await sbClient.from('app_state').upsert({id:1,data:DB,updated_at:agora});
     if(error)throw error;
     _ultimoUpdatedAtConhecido=agora;
     _pendingSync=false;_syncEmAndamento=false;
+    localStorage.setItem('ferrarinfo_db_cache',JSON.stringify(DB));
     atualizarIndicadorSync(true);
   }catch(e){
     console.error('Erro ao sincronizar com a nuvem:',e);
@@ -1385,18 +1436,27 @@ function iniciarRealtime(){
   sbClient.channel('app_state_sync')
     .on('postgres_changes',{event:'*',schema:'public',table:'app_state',filter:'id=eq.1'},payload=>{
       if(!payload.new||!payload.new.data)return;
-      if(_pendingSync)return; // evita sobrescrever alterações locais ainda não enviadas
-      DB=payload.new.data;
-      _ultimoUpdatedAtConhecido=payload.new.updated_at;
+      const remoto=payload.new.data;
+      // OS e financeiro são sempre mesclados com o que chegou da nuvem — mesmo que este
+      // PC tenha uma alteração local ainda não enviada (_pendingSync) — assim uma OS criada
+      // em outro PC aparece aqui na hora, sem precisar deslogar/logar de novo.
+      DB.ordens=mesclarOrdens(DB.ordens,remoto.ordens);
+      DB.financeiro=mesclarFinanceiro(DB.financeiro,remoto.financeiro);
+      if(!_pendingSync){
+        // Sem alteração local pendente: é seguro adotar o resto do estado (config, estoque,
+        // usuários etc.) exatamente como veio da nuvem.
+        Object.keys(remoto).forEach(k=>{if(k!=='ordens'&&k!=='financeiro')DB[k]=remoto[k];});
+        _ultimoUpdatedAtConhecido=payload.new.updated_at;
+      }
       aplicarMigracoesDB();
       localStorage.setItem('ferrarinfo_db_cache',JSON.stringify(DB));
-      atualizarIndicadorSync(true);
+      atualizarIndicadorSync(_pendingSync?false:true);
       if(!usuarioLogado)return;
       atualizarBadges();
       const pgAtiva=document.querySelector('.page.active');
       if(!pgAtiva)return;
       const pagina=pgAtiva.id.replace('page-','');
-      const loaders={dashboard:loadDashboard,os:filtrarOS,etiquetas:filtrarEtiquetas,orcamentos:filtrarOrcamentos,estoque:loadEstoque,financeiro:_financeiroDesbloqueado?filtrarFinanceiro:null,marketplace:null,promissorias:loadPromissorias,config:null,entrada:null};
+      const loaders={dashboard:loadDashboard,os:filtrarOS,etiquetas:filtrarEtiquetas,orcamentos:filtrarOrcamentos,lembretes:renderLembretesManutencao,estoque:loadEstoque,financeiro:_financeiroDesbloqueado?filtrarFinanceiro:null,marketplace:null,promissorias:loadPromissorias,config:null,entrada:null};
       if(loaders[pagina])loaders[pagina]();
     })
     .subscribe();
@@ -1516,7 +1576,7 @@ function applyPermissions(){
 }
 function canAccess(page){const p=usuarioLogado.perfil,map={dashboard:['ADM','VENDAS','TECNICO'],pdv:['ADM','VENDAS','TECNICO'],entrada:['ADM','VENDAS','TECNICO'],os:['ADM','VENDAS','TECNICO'],etiquetas:['ADM','VENDAS','TECNICO'],orcamentos:['ADM','VENDAS'],estoque:['ADM','VENDAS'],marketplace:['ADM','VENDAS'],financeiro:['ADM'],comissoes:['ADM'],rh:['ADM'],cupom:['ADM','VENDAS'],nf:['ADM','VENDAS'],promissorias:['ADM','VENDAS'],config:['ADM']};return(map[page]||['ADM']).includes(p);}
 
-const PAGE_TITLES={dashboard:'Dashboard',pdv:'Modo PDV',entrada:'Entrada de Serviços',os:'Ordens de Serviço',etiquetas:'Etiquetas',orcamentos:'Orçamentos',estoque:'Estoque',marketplace:'Marketplace',financeiro:'Controle Financeiro',comissoes:'Comissões',rh:'RH — Funcionários',cupom:'Cupom Fiscal',nf:'Nota Fiscal',promissorias:'Vendas a Prazo & Promissórias',config:'Configurações'};
+const PAGE_TITLES={dashboard:'Dashboard',pdv:'Modo PDV',entrada:'Entrada de Serviços',os:'Ordens de Serviço',etiquetas:'Etiquetas',orcamentos:'Orçamentos',lembretes:'Lembretes de Manutenção',estoque:'Estoque',marketplace:'Marketplace',financeiro:'Controle Financeiro',comissoes:'Comissões',rh:'RH — Funcionários',cupom:'Cupom Fiscal',nf:'Nota Fiscal',promissorias:'Vendas a Prazo & Promissórias',config:'Configurações'};
 let _financeiroDesbloqueado=false;
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('open');}
 function navigate(page){if(!canAccess(page)){toast('Sem permissão para esta área.','error');return;}
@@ -1527,7 +1587,7 @@ function navigate(page){if(!canAccess(page)){toast('Sem permissão para esta ár
   const pg=document.getElementById('page-'+page);if(pg)pg.classList.add('active');
   document.getElementById('header-title').textContent=PAGE_TITLES[page]||page;
   document.querySelectorAll('.nav-item').forEach(i=>{if(i.getAttribute('onclick')&&i.getAttribute('onclick').includes("'"+page+"'"))i.classList.add('active');});
-  const loaders={dashboard:loadDashboard,pdv:loadPDV,os:loadOS,etiquetas:loadEtiquetas,orcamentos:loadOrcamentos,estoque:loadEstoque,financeiro:loadFinanceiro,comissoes:renderComissoes,rh:renderRH,marketplace:loadMarketplace,cupom:initCupom,nf:initNF,promissorias:loadPromissorias,config:loadConfig,entrada:initEntrada};
+  const loaders={dashboard:loadDashboard,pdv:loadPDV,os:loadOS,etiquetas:loadEtiquetas,orcamentos:loadOrcamentos,lembretes:renderLembretesManutencao,estoque:loadEstoque,financeiro:loadFinanceiro,comissoes:renderComissoes,rh:renderRH,marketplace:loadMarketplace,cupom:initCupom,nf:initNF,promissorias:loadPromissorias,config:loadConfig,entrada:initEntrada};
   atualizarLeitorFlutuante(page==='estoque'||!['ADM','VENDAS','TECNICO'].includes(usuarioLogado.perfil));
   if(loaders[page])loaders[page]();
 }
@@ -1568,7 +1628,7 @@ let _modaisAbertos=0;
 function abrirModal(id){document.getElementById(id).style.display='flex';_modaisAbertos++;document.body.classList.add('modal-aberto');}
 function fecharModal(id){document.getElementById(id).style.display='none';_modaisAbertos=Math.max(0,_modaisAbertos-1);if(_modaisAbertos===0)document.body.classList.remove('modal-aberto');}
 function confirmar(msg,cb){document.getElementById('confirm-msg').textContent=msg;document.getElementById('confirm-btn').onclick=()=>{fecharModal('modal-confirm');cb();};abrirModal('modal-confirm');}
-function atualizarBadges(){const ab=DB.ordens.filter(o=>!['Pronto','Entregue','Cancelado'].includes(o.status)).length;const bEl=document.getElementById('badge-os');bEl.textContent=ab;bEl.style.display=ab>0?'':'none';const cr=DB.produtos.filter(p=>p.qtd<=p.min).length;document.getElementById('badge-estoque').style.display=cr>0?'':'none';document.getElementById('notif-dot').style.display=(ab>0||cr>0)?'':'none';}
+function atualizarBadges(){const ab=DB.ordens.filter(o=>!['Pronto','Entregue','Cancelado'].includes(o.status)).length;const bEl=document.getElementById('badge-os');bEl.textContent=ab;bEl.style.display=ab>0?'':'none';const cr=DB.produtos.filter(p=>p.qtd<=p.min).length;document.getElementById('badge-estoque').style.display=cr>0?'':'none';const hoje=nowDate();const lp=(DB.lembretesManutencao||[]).filter(l=>!l.enviado&&l.dataAlvo<=hoje).length;const bLemb=document.getElementById('badge-lembretes');if(bLemb){bLemb.textContent=lp;bLemb.style.display=lp>0?'':'none';}document.getElementById('notif-dot').style.display=(ab>0||cr>0||lp>0)?'':'none';}
 function showNotifications(){const ab=DB.ordens.filter(o=>!['Pronto','Entregue','Cancelado'].includes(o.status)).length,cr=DB.produtos.filter(p=>p.qtd<=p.min).length;let msg='';if(ab>0)msg+=`${ab} OS em aberto. `;if(cr>0)msg+=`${cr} produto(s) com estoque crítico.`;toast(msg||'Nenhuma notificação.',ab>0||cr>0?'warning':'info');}
 function switchTab(btn,contentId){btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');btn.closest('.page').querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));const t=document.getElementById('tab-'+contentId);if(t)t.classList.add('active');}
 function statusBadge(s){const map={'Aguardando diagnóstico':'badge-yellow','Em diagnóstico':'badge-blue','Aguardando aprovação':'badge-purple','Em reparo':'badge-blue','Aguardando peça':'badge-yellow','Pronto':'badge-green','Entregue':'badge-gray','Cancelado':'badge-red',Pendente:'badge-yellow',Aprovado:'badge-green',Recusado:'badge-red',Expirado:'badge-gray'};return`<span class="badge ${map[s]||'badge-gray'}">${s}</span>`;}
@@ -1687,17 +1747,17 @@ function loadDashboard(){
   document.getElementById('dash-receita-card').style.display=usuarioLogado.perfil==='ADM'?'':'none';
   document.getElementById('dash-resumo-fin-card').style.display=usuarioLogado.perfil==='ADM'?'':'none';
   document.getElementById('dash-termometro-card').style.display=usuarioLogado.perfil==='ADM'?'':'none';
-  ['dash-12meses-card','dash-anos-vendasvsserv-row','dash-ranking-servicos-card','dash-lembretes-card','dash-parcelas-card','dash-mercadorias-card'].forEach(id=>{document.getElementById(id).style.display=usuarioLogado.perfil==='ADM'?'':'none';});
+  ['dash-12meses-card','dash-anos-vendasvsserv-row','dash-ranking-servicos-card','dash-parcelas-card','dash-mercadorias-card'].forEach(id=>{document.getElementById(id).style.display=usuarioLogado.perfil==='ADM'?'':'none';});
   if(usuarioLogado.perfil==='ADM'){
     atualizarTermometro(recMes,mes);
     renderChart12Meses();
     renderComparativoAnos();
     renderVendasVsServicos();
     renderRankingServicos();
-    renderLembretesManutencao();
     renderParcelasReceber();
     renderValorMercadorias();
   }
+  renderLembretesManutencao();
   document.getElementById('dash-estoque-critico').textContent=cr.length;
   document.getElementById('dash-atividade').innerHTML=DB.atividade.slice(0,6).map(a=>`<div class="activity-item"><div class="activity-dot" style="background:${a.cor}"></div><div class="activity-text">${a.texto}</div><div class="activity-time">${a.tempo}</div></div>`).join('');
   const ul=DB.ordens.filter(o=>!['Entregue','Cancelado'].includes(o.status)).slice(0,5);
@@ -1857,7 +1917,33 @@ function renderRankingServicos(){
   }).join('');
 }
 
-function initEntrada(){const sel=document.getElementById('ent-tecnico');sel.innerHTML='<option value="">A definir</option>';DB.usuarios.filter(u=>u.perfil==='TECNICO'||u.perfil==='ADM').forEach(u=>{sel.innerHTML+=`<option>${u.nome}</option>`;});const selInd=document.getElementById('ent-indicador');selInd.innerHTML='<option value="">Ninguém</option>';DB.usuarios.filter(u=>u.ativo).forEach(u=>{selInd.innerHTML+=`<option>${u.nome}</option>`;});}
+function initEntrada(){const sel=document.getElementById('ent-tecnico');sel.innerHTML='<option value="">A definir</option>';DB.usuarios.filter(u=>u.perfil==='TECNICO'||u.perfil==='ADM').forEach(u=>{sel.innerHTML+=`<option>${u.nome}</option>`;});const selInd=document.getElementById('ent-indicador');selInd.innerHTML='<option value="">Ninguém</option>';DB.usuarios.filter(u=>u.ativo).forEach(u=>{selInd.innerHTML+=`<option>${u.nome}</option>`;});preencherDatalistClientes();}
+// Aprende os clientes já atendidos a partir das OS existentes (não há cadastro de cliente
+// separado — os dados vivem dentro de cada OS). Pega sempre a OS mais recente de cada nome
+// pra sugerir os dados mais atualizados (telefone pode ter mudado, por exemplo).
+function mapaClientesConhecidos(){
+  const mapa=new Map();
+  [...DB.ordens].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).forEach(o=>{
+    if(!o.cliente)return;
+    mapa.set(o.cliente.trim().toLowerCase(),{nome:o.cliente,cpf:o.cpf||'',tel:o.tel||'',email:o.email||''});
+  });
+  return mapa;
+}
+function preencherDatalistClientes(){
+  const dl=document.getElementById('dl-clientes');if(!dl)return;
+  const mapa=mapaClientesConhecidos();
+  dl.innerHTML=[...mapa.values()].map(c=>`<option value="${c.nome}">`).join('');
+}
+function autoPreencherCliente(){
+  const nome=document.getElementById('ent-nome').value.trim();
+  const achado=mapaClientesConhecidos().get(nome.toLowerCase());
+  if(!achado)return;
+  // Só preenche campos vazios — não sobrescreve o que o usuário já digitou manualmente.
+  const cpfEl=document.getElementById('ent-cpf'),telEl=document.getElementById('ent-tel'),emailEl=document.getElementById('ent-email');
+  if(!cpfEl.value&&achado.cpf)cpfEl.value=achado.cpf;
+  if(!telEl.value&&achado.tel)telEl.value=achado.tel;
+  if(!emailEl.value&&achado.email)emailEl.value=achado.email;
+}
 function limparEntrada(){['ent-nome','ent-cpf','ent-tel','ent-email','ent-equipamento','ent-problema','ent-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('ent-indicador').value='';document.getElementById('acc-carregador').checked=false;}
 function salvarOS(){
   const nome=document.getElementById('ent-nome').value.trim(),tel=document.getElementById('ent-tel').value.trim(),equipamento=document.getElementById('ent-equipamento').value.trim(),problema=document.getElementById('ent-problema').value.trim(),cpfCnpj=document.getElementById('ent-cpf').value.trim();
@@ -1871,7 +1957,7 @@ function salvarOS(){
   const acc=document.getElementById('acc-carregador').checked?['Carregador']:[];
   const num=DB.config.nextOS++;
   const os={id:num,cliente:nome,cpf:document.getElementById('ent-cpf').value,tel,email:document.getElementById('ent-email').value,tipo:equipamento,marca:'',modelo:'',serie:'',problema,acessorios:acc,obs:document.getElementById('ent-obs').value,tecnico:document.getElementById('ent-tecnico').value,indicadoPor:document.getElementById('ent-indicador').value,categoriaServico:'',status:'Aguardando diagnóstico',data:nowDate(),prazo:'',laudo:'',pecas:[],servicos:[],maoObra:0,garantiaDias:90,historico:[{data:nowStr(),usuario:usuarioLogado.nome,acao:'OS criada',status:'Aguardando diagnóstico'}]};
-  DB.ordens.unshift(os);addAtividade(`Nova OS #${num} criada para ${nome}`,'var(--green)');saveDB();atualizarBadges();toast(`OS #${num} criada com sucesso!`,'success');
+  marcarAtualizacaoOS(os);DB.ordens.unshift(os);addAtividade(`Nova OS #${num} criada para ${nome}`,'var(--green)');saveDB();atualizarBadges();toast(`OS #${num} criada com sucesso!`,'success');
   Promise.resolve(imprimirComprovante(os)).then(()=>imprimirEtiquetaOS(os));
   limparEntrada();
 }
@@ -1885,9 +1971,25 @@ function ferrarinfoImprimir(html,larguraMM,alturaMM,impressoraKey,winW,winH,agua
       return res;
     }).catch(()=>{toast('Erro ao imprimir. Verifique a impressora em Configurações.','error');});
   }
-  const w=window.open('','','width='+winW+',height='+winH);
-  w.document.write(html);w.document.close();w.focus();
-  return Promise.resolve();
+  return abrirJanelaImpressao(html,winW,winH);
+}
+// Abre uma janela com o HTML pronto pra impressão/"Salvar como PDF" quando rodando pelo
+// site (fora do programa instalado). Usa um Blob em vez de document.write numa janela em
+// branco — mais confiável em navegadores modernos — e, o mais importante, TRATA o caso do
+// navegador bloquear o pop-up: sem isso, o clique no botão "não fazia nada" (o erro ficava
+// silencioso), o que parecia o botão estar quebrado.
+function abrirJanelaImpressao(html,winW,winH){
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const w=window.open(url,'_blank','width='+(winW||800)+',height='+(winH||600));
+  if(!w){
+    toast('O navegador bloqueou a janela de impressão. Clique no ícone de pop-up bloqueado na barra de endereço e permita pop-ups para este site, depois tente de novo.','error');
+    URL.revokeObjectURL(url);
+    return Promise.resolve(null);
+  }
+  w.focus();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  return Promise.resolve(w);
 }
 // Monta um nome identificável para a janela/aba de impressão — usado tanto como título
 // (aparece na barra de tarefas/aba) quanto como sugestão de nome de arquivo quando a
@@ -2060,7 +2162,7 @@ function filtrarOS(){
   if(list.length===0){tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🔧</div><div class="empty-title">Nenhuma OS encontrada</div></div></td></tr>`;return;}
   tbody.innerHTML=list.map(o=>`<tr><td><span style="font-family:monospace;font-weight:700;color:var(--red)">#${o.id}</span></td><td>${o.cliente}</td><td style="color:var(--white2)">${o.tipo} ${o.marca}</td><td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gray2)">${o.problema}</td><td style="color:var(--gray2)">${o.tecnico||'—'}</td><td>${statusBadge(o.status)}</td><td style="color:var(--gray2);font-size:12px">${fmtData(o.data)}</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" onclick="abrirOS(${o.id})">👁️</button><button class="btn btn-ghost btn-xs" title="Comprovante" onclick="imprimirComprovante(DB.ordens.find(x=>x.id==${o.id}))">🖨️</button><button class="btn btn-ghost btn-xs" title="Etiqueta" onclick="imprimirEtiqueta(DB.ordens.find(x=>x.id==${o.id}))">🏷️</button>${o.status!=='Cancelado'&&o.status!=='Entregue'?`<button class="btn btn-danger btn-xs" onclick="cancelarOS(${o.id})">✕</button>`:''}</div></td></tr>`).join('');
 }
-function cancelarOS(id){confirmar('Deseja cancelar esta OS?',()=>{const os=DB.ordens.find(o=>o.id===id);if(!os)return;os.status='Cancelado';os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:'OS cancelada',status:'Cancelado'});saveDB();filtrarOS();atualizarBadges();toast('OS cancelada.','warning');});}
+function cancelarOS(id){confirmar('Deseja cancelar esta OS?',()=>{const os=DB.ordens.find(o=>o.id===id);if(!os)return;os.status='Cancelado';os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:'OS cancelada',status:'Cancelado'});marcarAtualizacaoOS(os);saveDB();filtrarOS();atualizarBadges();toast('OS cancelada.','warning');});}
 
 /* ---- Etiquetas (visão colorida: verde=aberto, azul=concluída) ---- */
 function loadEtiquetas(){filtrarEtiquetas();}
@@ -2213,17 +2315,23 @@ function registrarLembretePastaTermica(os){
   });
 }
 function renderLembretesManutencao(){
-  const el=document.getElementById('dash-lembretes-pasta');if(!el)return;
   const hoje=nowDate();
-  const pendentes=(DB.lembretesManutencao||[]).filter(l=>!l.enviado&&l.dataAlvo<=hoje);
-  if(pendentes.length===0){el.innerHTML='<div style="font-size:12px;color:var(--gray2)">Nenhum lembrete pendente no momento.</div>';return;}
-  el.innerHTML=pendentes.map(l=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-    <div><div style="font-size:13px;font-weight:600">${l.cliente}</div><div style="font-size:12px;color:var(--gray2)">${l.equipamento||'—'} • OS #${l.osId} • aplicado em ${fmtData(l.dataAplicacao)}</div></div>
+  const todos=DB.lembretesManutencao||[];
+  const pendentes=todos.filter(l=>!l.enviado&&l.dataAlvo<=hoje).sort((a,b)=>a.dataAlvo.localeCompare(b.dataAlvo));
+  const futuros=todos.filter(l=>!l.enviado&&l.dataAlvo>hoje).sort((a,b)=>a.dataAlvo.localeCompare(b.dataAlvo));
+  const linha=(l,pendente)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div><div style="font-size:13px;font-weight:600">${l.cliente}</div><div style="font-size:12px;color:var(--gray2)">${l.equipamento||'—'} • OS #${l.osId} • aplicado em ${fmtData(l.dataAplicacao)}${pendente?'':' • aviso a partir de '+fmtData(l.dataAlvo)}</div></div>
     <div style="display:flex;gap:6px">
-      ${l.tel?`<button class="btn btn-success btn-xs" onclick="enviarWhatsAppLembretePasta(${l.id})">📱 Enviar</button>`:'<span style="font-size:11px;color:var(--gray2)">Sem telefone</span>'}
+      ${pendente?(l.tel?`<button class="btn btn-success btn-xs" onclick="enviarWhatsAppLembretePasta(${l.id})">📱 Enviar</button>`:'<span style="font-size:11px;color:var(--gray2)">Sem telefone</span>'):''}
       <button class="btn btn-danger btn-xs" onclick="dispensarLembrete(${l.id})">✕</button>
     </div>
-  </div>`).join('');
+  </div>`;
+  const elPend=document.getElementById('lemb-pendentes');
+  if(elPend)elPend.innerHTML=pendentes.length?pendentes.map(l=>linha(l,true)).join(''):'<div style="font-size:12px;color:var(--gray2)">Nenhum lembrete pendente no momento.</div>';
+  const elFut=document.getElementById('lemb-futuros');
+  if(elFut)elFut.innerHTML=futuros.length?futuros.map(l=>linha(l,false)).join(''):'<div style="font-size:12px;color:var(--gray2)">Nenhum lembrete agendado no momento.</div>';
+  const badge=document.getElementById('badge-lembretes');
+  if(badge){if(pendentes.length>0){badge.style.display='';badge.textContent=pendentes.length;}else{badge.style.display='none';}}
 }
 function enviarWhatsAppLembretePasta(id){
   const l=(DB.lembretesManutencao||[]).find(x=>x.id===id);if(!l)return;
@@ -2294,9 +2402,9 @@ function autoPrecoOrcItem(){
   const achado=DB.catalogoServicos.find(x=>x.nome.toLowerCase()===nome.toLowerCase())||DB.catalogoPecas.find(x=>x.nome.toLowerCase()===nome.toLowerCase());
   if(achado&&!campoVal.value)campoVal.value=achado.valor;
 }
-function addPecaOS(osId){const nome=document.getElementById('os-peca-nome').value.trim(),qtd=parseInt(document.getElementById('os-peca-qtd').value)||1,val=parseFloat(document.getElementById('os-peca-val').value)||0;if(!nome){toast('Informe o nome da peça.','warning');return;}const os=DB.ordens.find(o=>o.id===osId);os.pecas.push({nome,qtd,val});aprenderPreco('peca',nome,val);saveDB();abrirOS(osId);toast('Peça adicionada!','success');}
-function addServicoOS(osId){const nome=document.getElementById('os-servico-nome').value.trim(),qtd=parseInt(document.getElementById('os-servico-qtd').value)||1,val=parseFloat(document.getElementById('os-servico-val').value)||0;if(!nome){toast('Informe o nome do serviço.','warning');return;}const os=DB.ordens.find(o=>o.id===osId);if(!os.servicos)os.servicos=[];os.servicos.push({nome,qtd,val});aprenderPreco('servico',nome,val);const catalogado=DB.catalogoServicos.find(x=>x.nome.toLowerCase()===nome.toLowerCase());let avisoGarantia='';if(catalogado&&catalogado.garantiaDias&&catalogado.garantiaDias>(os.garantiaDias||0)){os.garantiaDias=catalogado.garantiaDias;avisoGarantia=` Garantia da OS ajustada para ${catalogado.garantiaDias} dias.`;}saveDB();abrirOS(osId);toast('Serviço adicionado!'+avisoGarantia,'success');}
-function removerServicoOS(osId,idx){const os=DB.ordens.find(o=>o.id===osId);os.servicos.splice(idx,1);saveDB();abrirOS(osId);}
+function addPecaOS(osId){const nome=document.getElementById('os-peca-nome').value.trim(),qtd=parseInt(document.getElementById('os-peca-qtd').value)||1,val=parseFloat(document.getElementById('os-peca-val').value)||0;if(!nome){toast('Informe o nome da peça.','warning');return;}const os=DB.ordens.find(o=>o.id===osId);os.pecas.push({nome,qtd,val});aprenderPreco('peca',nome,val);marcarAtualizacaoOS(os);saveDB();abrirOS(osId);toast('Peça adicionada!','success');}
+function addServicoOS(osId){const nome=document.getElementById('os-servico-nome').value.trim(),qtd=parseInt(document.getElementById('os-servico-qtd').value)||1,val=parseFloat(document.getElementById('os-servico-val').value)||0;if(!nome){toast('Informe o nome do serviço.','warning');return;}const os=DB.ordens.find(o=>o.id===osId);if(!os.servicos)os.servicos=[];os.servicos.push({nome,qtd,val});aprenderPreco('servico',nome,val);const catalogado=DB.catalogoServicos.find(x=>x.nome.toLowerCase()===nome.toLowerCase());let avisoGarantia='';if(catalogado&&catalogado.garantiaDias&&catalogado.garantiaDias>(os.garantiaDias||0)){os.garantiaDias=catalogado.garantiaDias;avisoGarantia=` Garantia da OS ajustada para ${catalogado.garantiaDias} dias.`;}marcarAtualizacaoOS(os);saveDB();abrirOS(osId);toast('Serviço adicionado!'+avisoGarantia,'success');}
+function removerServicoOS(osId,idx){const os=DB.ordens.find(o=>o.id===osId);os.servicos.splice(idx,1);marcarAtualizacaoOS(os);saveDB();abrirOS(osId);}
 function enviarWhatsAppOSPronto(id){
   const os=DB.ordens.find(o=>o.id===id);if(!os)return;
   const tel=(os.tel||'').replace(/\D/g,'');
@@ -2321,7 +2429,7 @@ function enviarWhatsAppAndamento(id){
   const msg=textos[os.status]||`Olá, ${os.cliente}! 👋\n\nPassando para atualizar sobre o seu ${equip} (OS #${os.id}): status atual — ${os.status}. Qualquer dúvida, é só chamar!`;
   window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`,'_blank');
 }
-function salvarAlteracoesOS(id){const os=DB.ordens.find(o=>o.id===id),novoStatus=document.getElementById('os-status').value;if(novoStatus!==os.status){os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:`Status → ${novoStatus}`,status:novoStatus});addAtividade(`OS #${id} → ${novoStatus}`,'var(--blue)');}os.status=novoStatus;os.laudo=document.getElementById('os-laudo').value;os.tecnico=document.getElementById('os-tecnico-sel').value;os.prazo=document.getElementById('os-prazo-inp').value;os.garantiaDias=parseInt(document.getElementById('os-garantia-inp').value)||0;const totalServicos=(os.servicos||[]).reduce((a,s)=>a+s.val*(s.qtd||1),0),extra=parseFloat(document.getElementById('os-mao-obra-extra').value)||0;os.maoObra=totalServicos+extra;os.desconto=parseFloat(document.getElementById('os-desconto').value)||0;if(novoStatus==='Entregue')registrarLembretePastaTermica(os);saveDB();fecharModal('modal-os');filtrarOS();atualizarBadges();loadDashboard();toast('OS atualizada!','success');}
+function salvarAlteracoesOS(id){const os=DB.ordens.find(o=>o.id===id),novoStatus=document.getElementById('os-status').value;if(novoStatus!==os.status){os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:`Status → ${novoStatus}`,status:novoStatus});addAtividade(`OS #${id} → ${novoStatus}`,'var(--blue)');}os.status=novoStatus;os.laudo=document.getElementById('os-laudo').value;os.tecnico=document.getElementById('os-tecnico-sel').value;os.prazo=document.getElementById('os-prazo-inp').value;os.garantiaDias=parseInt(document.getElementById('os-garantia-inp').value)||0;const totalServicos=(os.servicos||[]).reduce((a,s)=>a+s.val*(s.qtd||1),0),extra=parseFloat(document.getElementById('os-mao-obra-extra').value)||0;os.maoObra=totalServicos+extra;os.desconto=parseFloat(document.getElementById('os-desconto').value)||0;if(novoStatus==='Entregue')registrarLembretePastaTermica(os);marcarAtualizacaoOS(os);saveDB();fecharModal('modal-os');filtrarOS();atualizarBadges();loadDashboard();toast('OS atualizada!','success');}
 
 function loadOrcamentos(){filtrarOrcamentos();}
 function calcTotalOrc(o){const sub=o.itens.reduce((a,i)=>a+(i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100)),0);return sub-(sub*(o.descTotal||0)/100);}
@@ -2502,10 +2610,7 @@ function imprimirVendaRapida(num,itens,total,cliente,pgto){
   const cfg=DB.config;
   const linhas=itens.map(i=>`<table><tr><td>${i.desc}<br>${i.qtd}x ${fmtMoeda(i.val)}</td><td style="text-align:right">${fmtMoeda(i.val*i.qtd)}</td></tr></table>`).join('');
   const html=`<html><head><style>body{font-family:'Courier New',monospace;font-size:12px;color:#000;width:280px;padding:10px}.c{text-align:center}.b{font-weight:bold}.l{border-top:1px dashed #000;margin:5px 0}table{width:100%}td{vertical-align:top;padding:1px 0}</style></head><body><div class="c b" style="font-size:13px">${cfg.nome}</div><div class="c">${cfg.cnpj}</div><div class="c">${cfg.endereco}</div><div class="l"></div><div class="c b">*** CUPOM NÃO FISCAL ***</div><div class="c">${num} — ${new Date().toLocaleString('pt-BR')}</div><div>Cliente: ${cliente}</div><div class="l"></div>${linhas}<div class="l"></div><table><tr><td class="b">TOTAL</td><td class="b" style="text-align:right">${fmtMoeda(total)}</td></tr></table><div>Forma: ${pgto}</div><div class="l"></div><div class="c">${cfg.msgCupom}</div></body></html>`;
-  const w=window.open('','','width=340,height=600');
-  if(!w)return;
-  w.document.write(html);w.document.close();w.focus();
-  setTimeout(()=>{w.print();w.close();},500);
+  abrirJanelaImpressao(html,340,600).then(w=>{if(w)setTimeout(()=>{w.print();w.close();},500);});
 }
 function filtrarEstoque(){const search=(document.getElementById('est-search').value||'').toLowerCase(),cat=document.getElementById('est-filter-cat').value,status=document.getElementById('est-filter-status').value;let list=DB.produtos.filter(p=>{const txt=`${p.sku} ${p.nome} ${p.cat} ${p.fornecedor}`.toLowerCase();if(search&&!txt.includes(search))return false;if(cat&&p.cat!==cat)return false;if(status==='critico'&&p.qtd>p.min)return false;if(status==='ok'&&p.qtd<=p.min)return false;return true;});document.getElementById('estoque-count-label').textContent=`${list.length} produto${list.length!==1?'s':''}`;const tbody=document.getElementById('est-tbody');if(list.length===0){tbody.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📦</div><div class="empty-title">Nenhum produto</div></div></td></tr>`;return;}tbody.innerHTML=list.map(p=>{const cr=p.qtd<=p.min,qtdClass=cr?'stock-critical':p.qtd===p.min+1?'stock-warning':'stock-ok';return`<tr><td style="font-family:monospace;font-size:12px;color:var(--gray2)">${p.sku}</td><td style="font-weight:600">${p.nome}</td><td><span class="badge badge-gray">${p.cat}</span></td><td style="color:var(--gray2)">${fmtMoeda(p.custo)}</td><td style="font-weight:700;color:var(--green)">${fmtMoeda(p.venda)}</td><td class="${qtdClass}">${p.qtd}</td><td style="color:var(--gray2)">${p.min}</td><td>${cr?'<span class="badge badge-red">Crítico</span>':'<span class="badge badge-green">OK</span>'}</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" onclick="abrirModalProduto(${p.id})">✏️</button><button class="btn btn-success btn-xs" onclick="abrirMovimentacao(${p.id})">±</button><button class="btn btn-danger btn-xs" onclick="excluirProduto(${p.id})">🗑️</button></div></td></tr>`;}).join('');}
 function abrirModalProduto(id){_produtoEditId=id||null;const prod=id?DB.produtos.find(p=>p.id===id):null;document.getElementById('modal-produto-title').textContent=id?'Editar Produto':'Novo Produto';const cats=DB.categoriasProd;document.getElementById('modal-produto-body').innerHTML=`<div class="form-grid"><div class="form-group"><label class="form-label">SKU</label><input class="form-control" id="prod-sku" value="${prod?prod.sku:''}"></div><div class="form-group"><label class="form-label">Código de Barras</label><input class="form-control" id="prod-codbarras" value="${prod&&prod.codigoBarras?prod.codigoBarras:''}" placeholder="Escaneie ou digite"></div><div class="form-group"><label class="form-label">Categoria</label><select class="form-control" id="prod-cat">${cats.map(c=>`<option${prod&&prod.cat===c?' selected':''}>${c}</option>`).join('')}</select></div><div class="form-group form-full"><label class="form-label">Nome *</label><input class="form-control" id="prod-nome" value="${prod?prod.nome:''}"></div><div class="form-group form-full"><label class="form-label">Fornecedor</label><input class="form-control" id="prod-forn" value="${prod?prod.fornecedor:''}"></div><div class="form-group"><label class="form-label">Custo (R$)</label><input class="form-control" id="prod-custo" type="number" step="0.01" value="${prod?prod.custo:''}"></div><div class="form-group"><label class="form-label">Preço Venda (R$)</label><input class="form-control" id="prod-venda" type="number" step="0.01" value="${prod?prod.venda:''}"></div><div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" id="prod-qtd" type="number" value="${prod?prod.qtd:0}"></div><div class="form-group"><label class="form-label">Estoque Mínimo</label><input class="form-control" id="prod-min" type="number" value="${prod?prod.min:2}"></div></div>`;document.getElementById('modal-produto-footer').innerHTML=`<button class="btn btn-secondary" onclick="fecharModal('modal-produto')">Cancelar</button><button class="btn btn-primary" onclick="salvarProduto()">💾 Salvar</button>`;abrirModal('modal-produto');}
@@ -2735,12 +2840,12 @@ function processarLeituraCupom(codigo){
 function renderCupomItens(){const list=document.getElementById('cup-itens-list'),total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('cup-total').textContent=fmtMoeda(total);if(_cupomItens.length===0){list.innerHTML='<div style="color:var(--gray2);font-size:12px">Nenhum item.</div>';}else{list.innerHTML=_cupomItens.map((i,idx)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)"><span>${i.desc} (${i.qtd}x ${fmtMoeda(i.val)})</span><div style="display:flex;gap:8px;align-items:center"><span style="color:var(--green);font-weight:600">${fmtMoeda(i.val*i.qtd)}</span><button class="btn btn-danger btn-xs" onclick="_cupomItens.splice(${idx},1);renderCupomItens()">✕</button></div></div>`).join('');}renderPreviewCupom();}
 function calcTroco(){const total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0),rec=parseFloat(document.getElementById('cup-recebido').value)||0;document.getElementById('cup-troco').value=fmtMoeda(Math.max(0,rec-total));}
 function renderPreviewCupom(){const cfg=DB.config,total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('cupom-preview').innerHTML=`<div style="text-align:center;font-weight:bold;font-size:13px">${cfg.nome}</div><div style="text-align:center;font-size:11px">${cfg.cnpj}</div><div style="text-align:center;font-size:11px">${cfg.endereco}</div><div style="border-top:1px dashed #000;margin:5px 0"></div><div style="text-align:center;font-weight:bold">CUPOM NÃO FISCAL</div><div style="text-align:center;font-size:11px">${document.getElementById('cup-num').value}</div><div style="border-top:1px dashed #000;margin:5px 0"></div>${_cupomItens.map(i=>`<div style="display:flex;justify-content:space-between"><span>${i.desc}</span><span>${fmtMoeda(i.val*i.qtd)}</span></div>`).join('')}<div style="border-top:1px dashed #000;margin:5px 0"></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>TOTAL</span><span>${fmtMoeda(total)}</span></div><div style="font-size:11px">Forma: ${document.getElementById('cup-pgto').value}</div><div style="border-top:1px dashed #000;margin:5px 0"></div><div style="text-align:center;font-size:11px">${cfg.msgCupom}</div>`;}
-function imprimirCupom(){if(_cupomItens.length===0){toast('Adicione itens.','warning');return;}const cfg=DB.config,total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0),num=document.getElementById('cup-num').value,cliente=document.getElementById('cup-cliente').value||'Consumidor Final',pgto=document.getElementById('cup-pgto').value,recebido=parseFloat(document.getElementById('cup-recebido').value)||0,troco=pgto==='Dinheiro'?Math.max(0,recebido-total):0;const html=`<html><head><style>body{font-family:'Courier New',monospace;font-size:12px;color:#000;width:280px;padding:10px}.c{text-align:center}.b{font-weight:bold}.l{border-top:1px dashed #000;margin:5px 0}table{width:100%}td{vertical-align:top;padding:1px 0}</style></head><body><div class="c b" style="font-size:13px">${cfg.nome}</div><div class="c">${cfg.cnpj}</div><div class="c">${cfg.endereco}</div><div class="l"></div><div class="c b">*** CUPOM NÃO FISCAL ***</div><div class="c">${num} — ${new Date().toLocaleString('pt-BR')}</div><div>Cliente: ${cliente}</div><div class="l"></div>${_cupomItens.map(i=>`<table><tr><td>${i.desc}<br>${i.qtd}x ${fmtMoeda(i.val)}</td><td style="text-align:right">${fmtMoeda(i.val*i.qtd)}</td></tr></table>`).join('')}<div class="l"></div><table><tr><td class="b">TOTAL</td><td class="b" style="text-align:right">${fmtMoeda(total)}</td></tr></table><div>Forma: ${pgto}</div>${pgto==='Dinheiro'?`<div>Recebido: ${fmtMoeda(recebido)}</div><div>Troco: ${fmtMoeda(troco)}</div>`:''}<div class="l"></div><div class="c">${cfg.msgCupom}</div></body></html>`;const w=window.open('','','width=340,height=600');w.document.write(html);w.document.close();w.focus();setTimeout(()=>{w.print();w.close();},500);DB.config.nextCupom++;DB.cupons.push({num,total,cliente,data:nowDate(),itens:[..._cupomItens]});saveDB();toast('Cupom emitido!','success');initCupom();}
+function imprimirCupom(){if(_cupomItens.length===0){toast('Adicione itens.','warning');return;}const cfg=DB.config,total=_cupomItens.reduce((a,i)=>a+i.val*i.qtd,0),num=document.getElementById('cup-num').value,cliente=document.getElementById('cup-cliente').value||'Consumidor Final',pgto=document.getElementById('cup-pgto').value,recebido=parseFloat(document.getElementById('cup-recebido').value)||0,troco=pgto==='Dinheiro'?Math.max(0,recebido-total):0;const html=`<html><head><style>body{font-family:'Courier New',monospace;font-size:12px;color:#000;width:280px;padding:10px}.c{text-align:center}.b{font-weight:bold}.l{border-top:1px dashed #000;margin:5px 0}table{width:100%}td{vertical-align:top;padding:1px 0}</style></head><body><div class="c b" style="font-size:13px">${cfg.nome}</div><div class="c">${cfg.cnpj}</div><div class="c">${cfg.endereco}</div><div class="l"></div><div class="c b">*** CUPOM NÃO FISCAL ***</div><div class="c">${num} — ${new Date().toLocaleString('pt-BR')}</div><div>Cliente: ${cliente}</div><div class="l"></div>${_cupomItens.map(i=>`<table><tr><td>${i.desc}<br>${i.qtd}x ${fmtMoeda(i.val)}</td><td style="text-align:right">${fmtMoeda(i.val*i.qtd)}</td></tr></table>`).join('')}<div class="l"></div><table><tr><td class="b">TOTAL</td><td class="b" style="text-align:right">${fmtMoeda(total)}</td></tr></table><div>Forma: ${pgto}</div>${pgto==='Dinheiro'?`<div>Recebido: ${fmtMoeda(recebido)}</div><div>Troco: ${fmtMoeda(troco)}</div>`:''}<div class="l"></div><div class="c">${cfg.msgCupom}</div></body></html>`;abrirJanelaImpressao(html,340,600).then(w=>{if(w)setTimeout(()=>{w.print();w.close();},500);});DB.config.nextCupom++;DB.cupons.push({num,total,cliente,data:nowDate(),itens:[..._cupomItens]});saveDB();toast('Cupom emitido!','success');initCupom();}
 
 function initNF(){_nfItens=[];const cfg=DB.config;document.getElementById('nf-emit-nome').value=cfg.nome||'';document.getElementById('nf-emit-cnpj').value=cfg.cnpj||'';document.getElementById('nf-emit-end').value=cfg.endereco||'';document.getElementById('nf-num').value='NF-'+String(DB.config.nextNF).padStart(6,'0');renderNFItens();}
 function addItemNF(){const desc=document.getElementById('nf-item-desc').value.trim(),qtd=parseInt(document.getElementById('nf-item-qtd').value)||1,val=parseFloat(document.getElementById('nf-item-val').value)||0;if(!desc||val<=0){toast('Preencha descrição e valor.','warning');return;}const cfop=document.getElementById('nf-item-cfop').value,cst=document.getElementById('nf-item-cst').value,icms=parseFloat(document.getElementById('nf-item-icms').value)||0;const existente=_nfItens.find(i=>i.desc.toLowerCase()===desc.toLowerCase()&&i.val===val&&i.cfop===cfop&&i.cst===cst&&i.icms===icms);if(existente){existente.qtd+=qtd;}else{_nfItens.push({desc,qtd,val,cfop,cst,icms});}renderNFItens();document.getElementById('nf-item-desc').value='';document.getElementById('nf-item-val').value='';}
 function renderNFItens(){const list=document.getElementById('nf-itens-list'),total=_nfItens.reduce((a,i)=>a+i.val*i.qtd,0);document.getElementById('nf-total').textContent=fmtMoeda(total);if(_nfItens.length===0){list.innerHTML='<div style="color:var(--gray2);font-size:12px">Nenhum item.</div>';return;}list.innerHTML=`<table style="width:100%;font-size:11px"><thead><tr><th style="text-align:left">Desc</th><th>Qtd</th><th>Unit</th><th>CFOP</th><th>ICMS%</th><th>Total</th><th></th></tr></thead><tbody>${_nfItens.map((i,idx)=>`<tr><td>${i.desc}</td><td style="text-align:center">${i.qtd}</td><td>${fmtMoeda(i.val)}</td><td>${i.cfop}</td><td>${i.icms}%</td><td style="color:var(--green)">${fmtMoeda(i.val*i.qtd)}</td><td><button class="btn btn-danger btn-xs" onclick="_nfItens.splice(${idx},1);renderNFItens()">✕</button></td></tr>`).join('')}</tbody></table>`;}
-function imprimirNF(){if(_nfItens.length===0){toast('Adicione itens.','warning');return;}const num=document.getElementById('nf-num').value,emNome=document.getElementById('nf-emit-nome').value,emCnpj=document.getElementById('nf-emit-cnpj').value,emIe=document.getElementById('nf-emit-ie').value,emEnd=document.getElementById('nf-emit-end').value,destNome=document.getElementById('nf-dest-nome').value,destCpf=document.getElementById('nf-dest-cpf').value,destEnd=document.getElementById('nf-dest-end').value,destTel=document.getElementById('nf-dest-tel').value,pgto=document.getElementById('nf-pgto').value,obs=document.getElementById('nf-obs').value,total=_nfItens.reduce((a,i)=>a+i.val*i.qtd,0);const html=`<html><head><style>body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:4px 6px;font-size:10px}.title{text-align:center;font-weight:bold;font-size:16px;margin-bottom:8px}.section{border:1px solid #000;margin-bottom:8px;padding:8px}.label{font-size:9px;font-weight:bold;text-transform:uppercase;color:#555;margin-bottom:3px}</style></head><body><div class="title">NOTA FISCAL SIMULADA — ${num}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><div class="section"><div class="label">Emitente</div><b>${emNome}</b><br>CNPJ: ${emCnpj} | IE: ${emIe}<br>${emEnd}</div><div class="section"><div class="label">Destinatário</div><b>${destNome}</b><br>CPF/CNPJ: ${destCpf}<br>${destEnd} | Tel: ${destTel}</div></div><table><thead><tr><th>Descrição</th><th>CFOP</th><th>CST</th><th>Qtd</th><th>Unit</th><th>ICMS%</th><th>VL ICMS</th><th>Total</th></tr></thead><tbody>${_nfItens.map(i=>`<tr><td>${i.desc}</td><td>${i.cfop}</td><td>${i.cst}</td><td style="text-align:center">${i.qtd}</td><td>R$ ${i.val.toFixed(2)}</td><td>${i.icms}%</td><td>R$ ${(i.val*i.qtd*i.icms/100).toFixed(2)}</td><td>R$ ${(i.val*i.qtd).toFixed(2)}</td></tr>`).join('')}</tbody></table><div style="text-align:right;font-size:14px;font-weight:bold;margin:12px 0">TOTAL: R$ ${total.toFixed(2)}</div><div class="section"><b>Forma de Pgto:</b> ${pgto} ${obs?'| Obs: '+obs:''}</div><div style="text-align:center;margin-top:20px;font-size:10px;color:#555">Documento de controle interno — Sem validade fiscal.<br>${emNome} — ${new Date().toLocaleString('pt-BR')}</div><div style="text-align:center;margin-top:16px"><button onclick="window.print()" style="font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border:1px solid #999;border-radius:6px;background:#f2f2f2;cursor:pointer">🖨️ Imprimir</button></div><style>@media print{button{display:none}}</style></body></html>`;const w=window.open('','','width=900,height=700');w.document.write(html);w.document.close();DB.config.nextNF++;DB.nfs.push({num,total,destNome,data:nowDate()});saveDB();toast('Nota Fiscal gerada!','success');}
+function imprimirNF(){if(_nfItens.length===0){toast('Adicione itens.','warning');return;}const num=document.getElementById('nf-num').value,emNome=document.getElementById('nf-emit-nome').value,emCnpj=document.getElementById('nf-emit-cnpj').value,emIe=document.getElementById('nf-emit-ie').value,emEnd=document.getElementById('nf-emit-end').value,destNome=document.getElementById('nf-dest-nome').value,destCpf=document.getElementById('nf-dest-cpf').value,destEnd=document.getElementById('nf-dest-end').value,destTel=document.getElementById('nf-dest-tel').value,pgto=document.getElementById('nf-pgto').value,obs=document.getElementById('nf-obs').value,total=_nfItens.reduce((a,i)=>a+i.val*i.qtd,0);const html=`<html><head><style>body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:4px 6px;font-size:10px}.title{text-align:center;font-weight:bold;font-size:16px;margin-bottom:8px}.section{border:1px solid #000;margin-bottom:8px;padding:8px}.label{font-size:9px;font-weight:bold;text-transform:uppercase;color:#555;margin-bottom:3px}</style></head><body><div class="title">NOTA FISCAL SIMULADA — ${num}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"><div class="section"><div class="label">Emitente</div><b>${emNome}</b><br>CNPJ: ${emCnpj} | IE: ${emIe}<br>${emEnd}</div><div class="section"><div class="label">Destinatário</div><b>${destNome}</b><br>CPF/CNPJ: ${destCpf}<br>${destEnd} | Tel: ${destTel}</div></div><table><thead><tr><th>Descrição</th><th>CFOP</th><th>CST</th><th>Qtd</th><th>Unit</th><th>ICMS%</th><th>VL ICMS</th><th>Total</th></tr></thead><tbody>${_nfItens.map(i=>`<tr><td>${i.desc}</td><td>${i.cfop}</td><td>${i.cst}</td><td style="text-align:center">${i.qtd}</td><td>R$ ${i.val.toFixed(2)}</td><td>${i.icms}%</td><td>R$ ${(i.val*i.qtd*i.icms/100).toFixed(2)}</td><td>R$ ${(i.val*i.qtd).toFixed(2)}</td></tr>`).join('')}</tbody></table><div style="text-align:right;font-size:14px;font-weight:bold;margin:12px 0">TOTAL: R$ ${total.toFixed(2)}</div><div class="section"><b>Forma de Pgto:</b> ${pgto} ${obs?'| Obs: '+obs:''}</div><div style="text-align:center;margin-top:20px;font-size:10px;color:#555">Documento de controle interno — Sem validade fiscal.<br>${emNome} — ${new Date().toLocaleString('pt-BR')}</div><div style="text-align:center;margin-top:16px"><button onclick="window.print()" style="font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border:1px solid #999;border-radius:6px;background:#f2f2f2;cursor:pointer">🖨️ Imprimir</button></div><style>@media print{button{display:none}}</style></body></html>`;abrirJanelaImpressao(html,900,700);DB.config.nextNF++;DB.nfs.push({num,total,destNome,data:nowDate()});saveDB();toast('Nota Fiscal gerada!','success');}
 
 function loadMarketplace(){
   renderMKTProdutos('fb');
@@ -3021,7 +3126,7 @@ function gerarPromissoriaImprimir(vendaId,num){
     ${diasAtraso>0?`<div style="margin-top:20px;padding:10px;background:#fff3cd;border:1px solid #ffc107"><strong>⚠️ Parcela em atraso (${diasAtraso} dias)</strong><br>Multa (2%): ${fmtMoeda(multa)}<br>Juros (1% ao mês): ${fmtMoeda(juros)}<br><strong>Valor atualizado: ${fmtMoeda(valorComJuros)}</strong></div>`:''}
     <p style="font-size:12px;margin-top:20px">1ª Via: Credor | 2ª Via: Devedor</p>
   </div>`;
-  const w=window.open('','_blank','width=800,height=600');w.document.write(texto);w.document.close();w.focus();setTimeout(()=>w.print(),300);
+  abrirJanelaImpressao(texto,800,600).then(w=>{if(w)setTimeout(()=>w.print(),300);});
 }
 
 /* ---- Cobrança via WhatsApp ---- */
@@ -3232,7 +3337,7 @@ function confirmarSaidaOS(){
   os.historico.push({data:nowStr(),usuario:usuarioLogado.nome,acao:'Saída via QR Code — Entregue e faturado',status:'Entregue'});
   if(total>0)DB.financeiro.push({id:Date.now(),desc:`OS #${os.id} — ${os.cliente}`,tipo:'receita',cat:'Serviço de reparo',categoriaServico:os.categoriaServico||detectarCategoriaServico(os),valor:total,data:nowDate(),pgto,obs:'Baixa automática via leitura de QR Code'});
   registrarLembretePastaTermica(os);
-  saveDB();fecharModal('modal-saida-os');atualizarBadges();
+  marcarAtualizacaoOS(os);saveDB();fecharModal('modal-saida-os');atualizarBadges();
   imprimirComprovanteSaida(os,pgto,total,os.desconto||0);
   const pgOS=document.getElementById('page-os'),pgDash=document.getElementById('page-dashboard'),pgFin=document.getElementById('page-financeiro'),pgEtq=document.getElementById('page-etiquetas');
   if(pgOS&&pgOS.classList.contains('active'))filtrarOS();
