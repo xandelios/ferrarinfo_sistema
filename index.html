@@ -534,7 +534,7 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
 </div>
 <!-- ORÇAMENTOS -->
 <div class="page" id="page-orcamentos">
-  <div class="section-header"><div><div class="section-title">Orçamentos</div><div class="section-sub">Propostas comerciais</div></div><button class="btn btn-primary" onclick="abrirModalOrcamento()">+ Novo Orçamento</button></div>
+  <div class="section-header"><div><div class="section-title">Orçamentos</div><div class="section-sub">Propostas comerciais</div></div><button class="btn btn-primary" onclick="abrirModalOrcamento()">＋ Gerar Orçamento</button></div>
   <div class="filters-bar">
     <input class="search-input" placeholder="🔍 Buscar orçamento..." id="orc-search" oninput="filtrarOrcamentos()">
     <select class="filter-select" id="orc-filter-status" onchange="filtrarOrcamentos()"><option value="">Todos os status</option><option>Pendente</option><option>Aprovado</option><option>Recusado</option><option>Expirado</option></select>
@@ -1014,6 +1014,9 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
 </div>
 <!-- MODALS -->
 <div class="modal-overlay" id="modal-os" style="display:none"><div class="modal modal-lg"><div class="modal-header"><div class="modal-title" id="modal-os-title">OS</div><button class="modal-close" onclick="fecharModal('modal-os')">✕</button></div><div class="modal-body" id="modal-os-body"></div><div class="modal-footer" id="modal-os-footer"></div></div></div>
+<div class="modal-overlay" id="modal-orc-preview" style="display:none"><div class="modal modal-lg" style="max-width:900px;width:96vw"><div class="modal-header"><div class="modal-title" id="orc-prev-titulo">Orçamento</div><button class="modal-close" onclick="fecharModal('modal-orc-preview')">✕</button></div>
+  <div class="modal-body" style="padding:0;background:#555"><iframe id="orc-prev-frame" style="width:100%;height:68vh;border:0;background:#fff" title="Pré-visualização do orçamento"></iframe></div>
+  <div class="modal-footer" style="flex-wrap:wrap"><button class="btn btn-secondary" onclick="fecharModal('modal-orc-preview')">Fechar</button><button class="btn btn-secondary" onclick="imprimirOrcamentoTermico(_orcPrevId)">🧾 Térmica</button><button class="btn btn-success" onclick="enviarWhatsAppOrcamento(_orcPrevId)">📱 WhatsApp</button><button class="btn btn-secondary" onclick="orcPrevImprimir(true)">📄 Salvar PDF</button><button class="btn btn-primary" onclick="orcPrevImprimir(false)">🖨️ Imprimir (A4)</button></div></div></div>
 <div class="modal-overlay" id="modal-orc" style="display:none"><div class="modal modal-lg"><div class="modal-header"><div class="modal-title" id="modal-orc-title">Orçamento</div><button class="modal-close" onclick="fecharModal('modal-orc')">✕</button></div><div class="modal-body" id="modal-orc-body"></div><div class="modal-footer" id="modal-orc-footer"></div></div></div>
 <div class="modal-overlay" id="modal-produto" style="display:none"><div class="modal"><div class="modal-header"><div class="modal-title" id="modal-produto-title">Produto</div><button class="modal-close" onclick="fecharModal('modal-produto')">✕</button></div><div class="modal-body" id="modal-produto-body"></div><div class="modal-footer" id="modal-produto-footer"></div></div></div>
 <div class="modal-overlay" id="modal-import-xml" style="display:none"><div class="modal" style="max-width:900px"><div class="modal-header"><div class="modal-title">📄 Importar Nota Fiscal (XML)</div><button class="modal-close" onclick="fecharModal('modal-import-xml')">✕</button></div><div class="modal-body" id="modal-import-xml-body"></div><div class="modal-footer"><button class="btn btn-secondary" onclick="fecharModal('modal-import-xml')">Cancelar</button><button class="btn btn-primary" onclick="confirmarImportXml()">✅ Confirmar Importação</button></div></div></div>
@@ -2576,18 +2579,108 @@ function filtrarOrcamentos(){
   let list=DB.orcamentos.filter(o=>{const txt=`${o.id} ${o.cliente} ${o.descricao}`.toLowerCase();if(search&&!txt.includes(search))return false;if(status&&o.status!==status)return false;return true;});
   const tbody=document.getElementById('orc-tbody');
   if(list.length===0){tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Nenhum orçamento</div></div></td></tr>`;return;}
-  tbody.innerHTML=list.map(o=>{const total=calcTotalOrc(o);return`<tr><td><span style="font-family:monospace;font-weight:700;color:var(--red)">#${o.id}</span></td><td>${o.cliente}</td><td style="color:var(--gray2)">${o.descricao}</td><td style="font-weight:700;color:var(--green)">${fmtMoeda(total)}</td><td style="color:var(--gray2);font-size:12px">${fmtData(o.validade)}</td><td>${statusBadge(o.status)}</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" onclick="abrirOrcamento(${o.id})">👁️</button>${o.tel?`<button class="btn btn-success btn-xs" title="Enviar no WhatsApp" onclick="enviarWhatsAppOrcamento(${o.id})">📱</button>`:''}${o.status==='Pendente'?`<button class="btn btn-success btn-xs" onclick="aprovarOrcamento(${o.id})">✓</button><button class="btn btn-danger btn-xs" onclick="recusarOrcamento(${o.id})">✕</button>`:''}<button class="btn btn-danger btn-xs" onclick="excluirOrcamento(${o.id})">🗑️</button></div></td></tr>`;}).join('');
+  tbody.innerHTML=list.map(o=>{const total=calcTotalOrc(o);return`<tr><td><span style="font-family:monospace;font-weight:700;color:var(--red)">#${o.id}</span></td><td>${o.cliente}</td><td style="color:var(--gray2)">${o.descricao}</td><td style="font-weight:700;color:var(--green)">${fmtMoeda(total)}</td><td style="color:var(--gray2);font-size:12px">${fmtData(o.validade)}</td><td>${statusBadge(o.status)}</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-xs" title="Ver / editar" onclick="abrirOrcamento(${o.id})">👁️</button><button class="btn btn-secondary btn-xs" title="Imprimir orçamento" onclick="imprimirOrcamento(${o.id})">🖨️</button>${o.tel?`<button class="btn btn-success btn-xs" title="Enviar no WhatsApp" onclick="enviarWhatsAppOrcamento(${o.id})">📱</button>`:''}${o.status==='Pendente'?`<button class="btn btn-success btn-xs" onclick="aprovarOrcamento(${o.id})">✓</button><button class="btn btn-danger btn-xs" onclick="recusarOrcamento(${o.id})">✕</button>`:''}<button class="btn btn-danger btn-xs" onclick="excluirOrcamento(${o.id})">🗑️</button></div></td></tr>`;}).join('');
 }
 function abrirModalOrcamento(id){
   _orcEditId=id||null;const orc=id?DB.orcamentos.find(o=>o.id===id):null;_orcItens=id?[...orc.itens]:[];
   document.getElementById('modal-orc-title').textContent=id?`Orçamento #${id}`:'Novo Orçamento';
-  document.getElementById('modal-orc-body').innerHTML=`<datalist id="dl-itens-orc">${[...new Set([...listaAutocompleteServicos(),...listaAutocompletePecas()])].map(n=>`<option value="${n}">`).join('')}</datalist><div class="form-grid" style="margin-bottom:16px"><div class="form-group form-full"><label class="form-label">Cliente *</label><input class="form-control" id="orc-cliente" value="${orc?orc.cliente:''}" placeholder="Nome"></div><div class="form-group"><label class="form-label">Telefone / WhatsApp</label><input class="form-control" id="orc-tel" value="${orc?(orc.tel||''):''}" placeholder="(11) 99999-9999"></div><div class="form-group"><label class="form-label">Descrição</label><input class="form-control" id="orc-desc" value="${orc?orc.descricao:''}" placeholder="Resumo"></div><div class="form-group"><label class="form-label">Validade</label><input class="form-control" id="orc-validade" type="date" value="${orc?orc.validade:''}"></div><div class="form-group"><label class="form-label">Desconto Total (%)</label><input class="form-control" id="orc-desc-total" type="number" min="0" max="100" value="${orc?(orc.descTotal||0):0}"></div></div><div class="card-title">Itens</div><div id="orc-itens-wrap" style="margin-bottom:12px"></div><div class="form-grid" style="margin-bottom:10px"><div class="form-group form-full"><label class="form-label">Descrição do Item</label><input class="form-control" id="orc-item-desc" list="dl-itens-orc" placeholder="Produto ou serviço" oninput="autoPrecoOrcItem()"></div><div class="form-group"><label class="form-label">Qtd</label><input class="form-control" id="orc-item-qtd" type="number" value="1" min="1"></div><div class="form-group"><label class="form-label">Valor Unit.</label><input class="form-control" id="orc-item-val" type="number" step="0.01"></div><div class="form-group"><label class="form-label">Desc. Item (%)</label><input class="form-control" id="orc-item-desc2" type="number" value="0" min="0" max="100"></div></div><button class="btn btn-secondary btn-sm" onclick="addItemOrc()">+ Adicionar Item</button><hr class="divider"><div style="display:flex;justify-content:space-between;align-items:center"><span>Total</span><span style="font-size:22px;font-weight:800;color:var(--green)" id="orc-total-preview">R$ 0,00</span></div>`;
-  document.getElementById('modal-orc-footer').innerHTML=`<button class="btn btn-secondary" onclick="fecharModal('modal-orc')">Cancelar</button>${orc?`<button class="btn btn-success" title="Enviar orçamento no WhatsApp" onclick="enviarWhatsAppOrcamento(${orc.id})">📱 Enviar</button>`:''}<button class="btn btn-primary" onclick="salvarOrcamento()">💾 Salvar</button>`;
+  document.getElementById('modal-orc-body').innerHTML=`<datalist id="dl-itens-orc">${[...new Set([...listaAutocompleteServicos(),...listaAutocompletePecas()])].map(n=>`<option value="${n}">`).join('')}</datalist><div class="form-grid" style="margin-bottom:16px"><div class="form-group form-full"><label class="form-label">Cliente *</label><input class="form-control" id="orc-cliente" list="dl-clientes" oninput="orcAutoCliente()" autocomplete="off" value="${orc?orc.cliente:''}" placeholder="Nome — clientes antigos preenchem sozinhos"></div><div class="form-group"><label class="form-label">Telefone / WhatsApp</label><input class="form-control" id="orc-tel" value="${orc?(orc.tel||''):''}" placeholder="(11) 99999-9999"></div><div class="form-group"><label class="form-label">Descrição</label><input class="form-control" id="orc-desc" value="${orc?orc.descricao:''}" placeholder="Resumo"></div><div class="form-group"><label class="form-label">Validade</label><input class="form-control" id="orc-validade" type="date" value="${orc?orc.validade:_orcValidadePadrao()}"></div><div class="form-group"><label class="form-label">Desconto Total (%)</label><input class="form-control" id="orc-desc-total" type="number" min="0" max="100" value="${orc?(orc.descTotal||0):0}"></div></div><div class="card-title">Itens</div><div id="orc-itens-wrap" style="margin-bottom:12px"></div><div class="form-grid" style="margin-bottom:10px"><div class="form-group form-full"><label class="form-label">Descrição do Item</label><input class="form-control" id="orc-item-desc" list="dl-itens-orc" placeholder="Produto ou serviço" oninput="autoPrecoOrcItem()"></div><div class="form-group"><label class="form-label">Qtd</label><input class="form-control" id="orc-item-qtd" type="number" value="1" min="1"></div><div class="form-group"><label class="form-label">Valor Unit.</label><input class="form-control" id="orc-item-val" type="number" step="0.01"></div><div class="form-group"><label class="form-label">Desc. Item (%)</label><input class="form-control" id="orc-item-desc2" type="number" value="0" min="0" max="100"></div></div><button class="btn btn-secondary btn-sm" onclick="addItemOrc()">+ Adicionar Item</button><hr class="divider"><div style="display:flex;justify-content:space-between;align-items:center"><span>Total</span><span style="font-size:22px;font-weight:800;color:var(--green)" id="orc-total-preview">R$ 0,00</span></div>`;
+  document.getElementById('modal-orc-footer').innerHTML=`<button class="btn btn-secondary" onclick="fecharModal('modal-orc')">Cancelar</button>${orc?`<button class="btn btn-success" title="Enviar orçamento no WhatsApp" onclick="enviarWhatsAppOrcamento(${orc.id})">📱 Enviar</button>`:''}${orc?`<button class="btn btn-secondary" onclick="imprimirOrcamento(${orc.id})">🖨️ Imprimir</button>`:''}<button class="btn btn-secondary" onclick="salvarOrcamento(true)">💾 Salvar e imprimir</button><button class="btn btn-primary" onclick="salvarOrcamento()">💾 Salvar</button>`;
   renderItensOrc();abrirModal('modal-orc');
 }
 function renderItensOrc(){const wrap=document.getElementById('orc-itens-wrap');if(!wrap)return;if(_orcItens.length===0){wrap.innerHTML='<div style="color:var(--gray2);font-size:12px;padding:8px 0">Nenhum item.</div>';}else{wrap.innerHTML=`<table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left">Descrição</th><th>Qtd</th><th>Valor</th><th>Desc%</th><th>Sub</th><th></th></tr></thead><tbody>${_orcItens.map((item,i)=>{const sub=item.val*item.qtd-(item.val*item.qtd*(item.desc2||0)/100);return`<tr><td>${item.desc}</td><td style="text-align:center">${item.qtd}</td><td>${fmtMoeda(item.val)}</td><td>${item.desc2||0}%</td><td>${fmtMoeda(sub)}</td><td><button class="btn btn-danger btn-xs" onclick="_orcItens.splice(${i},1);renderItensOrc()">✕</button></td></tr>`;}).join('')}</tbody></table>`;};const dt=parseFloat(document.getElementById('orc-desc-total')?.value||0),sub=_orcItens.reduce((a,i)=>a+(i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100)),0),total=sub-(sub*dt/100);const el=document.getElementById('orc-total-preview');if(el)el.textContent=fmtMoeda(total);}
 function addItemOrc(){const desc=document.getElementById('orc-item-desc').value.trim(),qtd=parseInt(document.getElementById('orc-item-qtd').value)||1,val=parseFloat(document.getElementById('orc-item-val').value)||0,desc2=parseFloat(document.getElementById('orc-item-desc2').value)||0;if(!desc||val<=0){toast('Preencha descrição e valor.','warning');return;}_orcItens.push({desc,qtd,val,desc2});const ehProduto=DB.produtos.some(p=>p.nome.toLowerCase()===desc.toLowerCase());aprenderPreco(ehProduto?'peca':'servico',desc,val);renderItensOrc();document.getElementById('orc-item-desc').value='';document.getElementById('orc-item-val').value='';}
-function salvarOrcamento(){const cliente=document.getElementById('orc-cliente').value.trim();if(!cliente){toast('Informe o cliente.','warning');return;}if(_orcItens.length===0){toast('Adicione ao menos um item.','warning');return;}const descTotal=parseFloat(document.getElementById('orc-desc-total').value)||0,tel=document.getElementById('orc-tel').value.trim();let idSalvo;if(_orcEditId){const orc=DB.orcamentos.find(o=>o.id===_orcEditId);orc.cliente=cliente;orc.tel=tel;orc.descricao=document.getElementById('orc-desc').value;orc.validade=document.getElementById('orc-validade').value;orc.itens=_orcItens;orc.descTotal=descTotal;idSalvo=orc.id;toast('Orçamento atualizado!','success');}else{idSalvo=DB.config.nextOrc++;DB.orcamentos.unshift({id:idSalvo,cliente,tel,descricao:document.getElementById('orc-desc').value,itens:_orcItens,validade:document.getElementById('orc-validade').value,status:'Pendente',data:nowDate(),descTotal});toast('Orçamento criado!','success');}saveDB();fecharModal('modal-orc');filtrarOrcamentos();}
+function salvarOrcamento(imprimir){const cliente=document.getElementById('orc-cliente').value.trim();if(!cliente){toast('Informe o cliente.','warning');return;}if(_orcItens.length===0){toast('Adicione ao menos um item.','warning');return;}const descTotal=parseFloat(document.getElementById('orc-desc-total').value)||0,tel=document.getElementById('orc-tel').value.trim();let idSalvo;if(_orcEditId){const orc=DB.orcamentos.find(o=>o.id===_orcEditId);orc.cliente=cliente;orc.tel=tel;orc.descricao=document.getElementById('orc-desc').value;orc.validade=document.getElementById('orc-validade').value;orc.itens=_orcItens;orc.descTotal=descTotal;idSalvo=orc.id;toast('Orçamento atualizado!','success');}else{idSalvo=DB.config.nextOrc++;DB.orcamentos.unshift({id:idSalvo,cliente,tel,descricao:document.getElementById('orc-desc').value,itens:_orcItens,validade:document.getElementById('orc-validade').value,status:'Pendente',data:nowDate(),descTotal});toast('Orçamento criado!','success');}saveDB();fecharModal('modal-orc');filtrarOrcamentos();if(imprimir===true)imprimirOrcamento(idSalvo);}
+function _orcValidadePadrao(){const d=new Date();d.setDate(d.getDate()+7);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function orcAutoCliente(){
+  const nome=document.getElementById('orc-cliente').value.trim();
+  const achado=mapaClientesConhecidos().get(nome.toLowerCase());
+  const telEl=document.getElementById('orc-tel');
+  if(achado&&achado.tel&&telEl&&!telEl.value)telEl.value=achado.tel;
+}
+// Orçamento para o cliente — impressora térmica (mesmo padrão dos outros comprovantes).
+// Orçamento em A4 com logo — pré-visualização na tela; imprime na jato de tinta (ex.: Epson L1250)
+// ou salva em PDF pela própria janela de impressão ("Destino: Salvar como PDF").
+let _orcPrevId=null;
+function htmlOrcamentoA4(o){
+  const cfg=DB.config,total=calcTotalOrc(o),logo=cfg.logo?'data:image/jpeg;base64,'+cfg.logo:'';
+  const sub=o.itens.reduce((a,i)=>a+(i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100)),0);
+  const linhas=o.itens.map((i,n)=>{const st=i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100);return `<tr><td class="n">${n+1}</td><td>${i.desc}</td><td class="r">${i.qtd}</td><td class="r">${fmtMoeda(i.val)}</td><td class="r">${i.desc2?i.desc2+'%':'—'}</td><td class="r b">${fmtMoeda(st)}</td></tr>`;}).join('');
+  const esc=t=>String(t==null?'':t).replace(/</g,'&lt;');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Orçamento ${o.id}</title><style>
+  @page{size:A4;margin:12mm}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222;padding:14px 18px}
+  .top{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c0392b;padding-bottom:12px}
+  .top img{width:84px;height:84px;object-fit:contain}
+  .emp{flex:1}.emp .nm{font-size:22px;font-weight:800;letter-spacing:.5px}.emp div{font-size:12px;color:#555;line-height:1.5}
+  .tit{text-align:right}.tit .t{font-size:20px;font-weight:800;color:#c0392b}.tit div{font-size:12px;color:#555}
+  .box{margin:16px 0;padding:10px 14px;background:#f6f6f6;border-radius:6px;line-height:1.6}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{background:#c0392b;color:#fff;text-align:left;padding:7px 8px;font-size:12px}
+  td{padding:7px 8px;border-bottom:1px solid #ddd;vertical-align:top}
+  .r{text-align:right}.b{font-weight:700}.n{width:30px;color:#888}
+  th.r{text-align:right}
+  .tot{margin-top:14px;margin-left:auto;width:260px;font-size:13px}
+  .tot div{display:flex;justify-content:space-between;padding:3px 0}
+  .tot .g{font-size:18px;font-weight:800;border-top:2px solid #222;margin-top:4px;padding-top:6px;color:#c0392b}
+  .val{margin-top:20px;padding:10px 14px;border:1px dashed #c0392b;border-radius:6px;text-align:center;font-weight:700}
+  .obs{margin-top:14px;font-size:11px;color:#666;line-height:1.5}
+  .ass{display:flex;gap:40px;margin-top:50px}.ass div{flex:1;border-top:1px solid #555;text-align:center;padding-top:4px;font-size:11px;color:#555}
+  .rod{margin-top:22px;text-align:center;font-size:11px;color:#888}
+  tr{page-break-inside:avoid}
+  </style></head><body>
+  <div class="top">${logo?`<img src="${logo}" alt="">`:''}<div class="emp"><div class="nm">${esc(cfg.nome)}</div><div>${esc(cfg.cnpj)}${cfg.tel?' · '+esc(cfg.tel):''}</div><div>${esc(cfg.endereco)}</div></div>
+  <div class="tit"><div class="t">ORÇAMENTO Nº ${o.id}</div><div>Emitido em ${fmtData(o.data)}</div>${o.validade?`<div>Válido até ${fmtData(o.validade)}</div>`:''}</div></div>
+  <div class="box"><b>Cliente:</b> ${esc(o.cliente)}${o.tel?`<br><b>Telefone:</b> ${esc(o.tel)}`:''}${o.descricao?`<br><b>Referente a:</b> ${esc(o.descricao)}`:''}</div>
+  <table><thead><tr><th>#</th><th>Descrição</th><th class="r">Qtd</th><th class="r">Valor unit.</th><th class="r">Desc.</th><th class="r">Subtotal</th></tr></thead><tbody>${linhas}</tbody></table>
+  <div class="tot">${o.descTotal?`<div><span>Subtotal</span><span>${fmtMoeda(sub)}</span></div><div><span>Desconto (${o.descTotal}%)</span><span>-${fmtMoeda(sub*o.descTotal/100)}</span></div>`:''}<div class="g"><span>TOTAL</span><span>${fmtMoeda(total)}</span></div></div>
+  ${o.validade?`<div class="val">Orçamento válido até ${fmtData(o.validade)}</div>`:''}
+  <div class="obs">Orçamento sem compromisso. Valores e prazos sujeitos a alteração após a data de validade ou em caso de falta de peças no fornecedor.</div>
+  <div class="ass"><div>${esc(cfg.nome)}</div><div>De acordo — ${esc(o.cliente)}</div></div>
+  <div class="rod">${esc(cfg.msgCupom||'Obrigado pela preferência!')}</div></body></html>`;
+}
+function imprimirOrcamento(id){
+  const o=DB.orcamentos.find(x=>x.id===id);if(!o)return;
+  _orcPrevId=id;
+  document.getElementById('orc-prev-titulo').textContent=`Orçamento #${o.id} — ${o.cliente}`;
+  document.getElementById('orc-prev-frame').srcdoc=htmlOrcamentoA4(o);
+  abrirModal('modal-orc-preview');
+}
+function orcPrevImprimir(pdf){
+  const o=DB.orcamentos.find(x=>x.id===_orcPrevId);if(!o)return;
+  const fr=document.getElementById('orc-prev-frame');if(!fr||!fr.contentWindow)return;
+  const nome=`Orcamento ${o.id} - ${(o.cliente||'Cliente').replace(/[\\/:*?"<>|]/g,'').trim()} - ${fmtData(o.data).replace(/\//g,'-')}`;
+  const tituloAntes=document.title;document.title=nome;
+  const voltar=()=>{document.title=tituloAntes;};
+  fr.contentWindow.addEventListener('afterprint',voltar,{once:true});setTimeout(voltar,60000);
+  if(pdf)toast('Na tela que abrir, em "Destino" escolha "Salvar como PDF". Para a L1250, escolha a impressora.','info');
+  fr.contentWindow.focus();fr.contentWindow.print();
+}
+function imprimirOrcamentoTermico(id){
+  const o=DB.orcamentos.find(x=>x.id===id);if(!o)return;
+  const cfg=DB.config,L=cfg.reciboLarguraMM||80,total=calcTotalOrc(o);
+  const titulo=`Orcamento ${o.id} - ${(o.cliente||'Cliente').replace(/[\\/:*?"<>|]/g,'').trim()} - ${fmtData(o.data).replace(/\//g,'-')}`;
+  const linhas=o.itens.map(i=>{const sub=i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100);return `<table style="width:100%"><tr><td>${i.desc}<br>${i.qtd}x ${fmtMoeda(i.val)}${i.desc2?` (-${i.desc2}%)`:''}</td><td style="text-align:right;vertical-align:top">${fmtMoeda(sub)}</td></tr></table>`;}).join('');
+  const subTotal=o.itens.reduce((a,i)=>a+(i.val*i.qtd-(i.val*i.qtd*(i.desc2||0)/100)),0);
+  const html=`<html><head><meta charset="utf-8"><title>${titulo}</title><style>
+  @page{size:${L}mm auto;margin:0}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{font-family:'Courier New',monospace;font-size:13px;line-height:1.25;color:#000;padding:2mm 2.5mm;width:${L}mm}
+  .c{text-align:center}.b{font-weight:bold}.l{border-top:1px dashed #000;margin:4px 0}td{padding:1px 0}
+  .no-print{margin-top:10px;text-align:center}.no-print button{font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border:1px solid #999;border-radius:6px;background:#f2f2f2;cursor:pointer}
+  @media print{.no-print{display:none};body{background:#fff}}
+  </style></head><body><div class="c b" style="font-size:16px">${cfg.nome}</div><div class="c" style="font-size:11px">${cfg.cnpj} · ${cfg.endereco}</div><div class="l"></div>
+  <div class="c b">ORÇAMENTO Nº ${o.id}</div><div class="c" style="font-size:11px">${fmtData(o.data)}</div><div class="l"></div>
+  <div><b>Cliente:</b> ${o.cliente}${o.tel?' · '+o.tel:''}</div>${o.descricao?`<div><b>Ref.:</b> ${o.descricao}</div>`:''}<div class="l"></div>
+  ${linhas}<div class="l"></div>
+  ${o.descTotal?`<div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${fmtMoeda(subTotal)}</span></div><div style="display:flex;justify-content:space-between"><span>Desconto (${o.descTotal}%)</span><span>-${fmtMoeda(subTotal*o.descTotal/100)}</span></div>`:''}
+  <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:15px"><span>TOTAL</span><span>${fmtMoeda(total)}</span></div><div class="l"></div>
+  ${o.validade?`<div class="c b">Válido até ${fmtData(o.validade)}</div>`:''}<div class="c" style="font-size:11px">Orçamento sem compromisso. Valores sujeitos a alteração após a validade.</div><div class="l"></div><div class="c" style="font-size:11px">${cfg.msgCupom||'Obrigado pela preferência!'}</div>
+  <div class="no-print"><button onclick="window.print()">🖨️ Imprimir</button></div>
+  <script>document.title=${JSON.stringify(titulo)}+'\u200bFERRARINFO_PRONTO';setTimeout(()=>{document.title=${JSON.stringify(titulo)};},0);<\/script></body></html>`;
+  return ferrarinfoImprimir(html,L,Math.max(100,80+o.itens.length*12),'impressoraComprovante',340,600,true);
+}
 function abrirOrcamento(id){abrirModalOrcamento(id);}
 function aprovarOrcamento(id){DB.orcamentos.find(o=>o.id===id).status='Aprovado';saveDB();filtrarOrcamentos();toast('Aprovado!','success');}
 function recusarOrcamento(id){confirmar('Recusar este orçamento?',()=>{DB.orcamentos.find(o=>o.id===id).status='Recusado';saveDB();filtrarOrcamentos();toast('Recusado.','warning');});}
