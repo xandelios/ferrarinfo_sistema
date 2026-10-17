@@ -254,21 +254,21 @@ body.modal-aberto #leitor-toggle-btn,body.modal-aberto #leitor-flutuante{display
     </div>
   </div>
 </div>
-<div class="modal-overlay" id="modal-recuperar-senha" style="display:none">
+<div class="modal-overlay" id="modal-recuperar-senha" style="display:none;z-index:10000">
   <div class="modal modal-sm"><div class="modal-header"><div class="modal-title">🔑 Recuperar Senha</div><button class="modal-close" onclick="fecharModal('modal-recuperar-senha')">✕</button></div>
     <div class="modal-body">
       <div id="rec-passo-login">
-        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Digite o login do administrador para o qual quer redefinir a senha.</p>
+        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Digite o login do usuário que vai ter a senha trocada (o seu é <b>xande</b>). Não é o e-mail.</p>
         <div class="form-group"><label class="form-label">Login</label><input class="form-control" id="rec-login-input" placeholder="Ex: xande" onkeydown="if(event.key==='Enter')recAvancarLogin();"></div>
         <div id="rec-login-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
       </div>
       <div id="rec-passo-cpf" style="display:none">
-        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Pra confirmar que é você, digite o CPF cadastrado desse usuário.</p>
-        <div class="form-group"><label class="form-label">CPF</label><input class="form-control" id="rec-cpf-input" placeholder="000.000.000-00" oninput="mascaraCpfCnpj(this)" onkeydown="if(event.key==='Enter')recAvancarCpf();"></div>
+        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Pra confirmar que é você, digite a senha da sua <b>conta da nuvem</b> (<span id="rec-email-nuvem"></span>), a mesma da tela "Conectar este computador".</p>
+        <div class="form-group"><label class="form-label">Senha da conta da nuvem</label><input class="form-control" type="password" id="rec-cpf-input" autocomplete="current-password" onkeydown="if(event.key==='Enter')recAvancarCpf();"></div>
         <div id="rec-cpf-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
       </div>
       <div id="rec-passo-senha" style="display:none">
-        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">CPF confirmado! Agora digite a nova senha.</p>
+        <p style="font-size:13px;color:var(--gray2);margin-bottom:12px">Identidade confirmada! Agora digite a nova senha (mínimo 6 caracteres).</p>
         <div class="form-group"><label class="form-label">Nova senha</label><input class="form-control" type="password" id="rec-senha1-input" onkeydown="if(event.key==='Enter')document.getElementById('rec-senha2-input').focus();"></div>
         <div class="form-group"><label class="form-label">Confirme a nova senha</label><input class="form-control" type="password" id="rec-senha2-input" onkeydown="if(event.key==='Enter')recSalvarNovaSenha();"></div>
         <div id="rec-senha-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
@@ -1641,20 +1641,30 @@ function abrirRecuperarSenha(){
   setTimeout(()=>document.getElementById('rec-login-input').focus(),100);
 }
 function recAvancarLogin(){
-  const login=document.getElementById('rec-login-input').value.trim();
-  const u=DB.usuarios.find(x=>x.login===login&&x.ativo!==false);
-  if(!u){document.getElementById('rec-login-erro').textContent='Usuário não encontrado.';return;}
-  if(!u.cpf){document.getElementById('rec-login-erro').textContent='Esse usuário não tem CPF cadastrado. Peça pra outro administrador redefinir a senha em Configurações → Usuários.';return;}
+  const login=document.getElementById('rec-login-input').value.trim().toLowerCase();
+  const u=DB.usuarios.find(x=>(x.login||'').toLowerCase()===login&&x.ativo!==false);
+  if(!u){document.getElementById('rec-login-erro').textContent='Usuário não encontrado. Use o login (ex.: xande), não o e-mail.';return;}
   _recUsuarioAlvo=u;
-  document.getElementById('rec-passo-login').style.display='none';
-  document.getElementById('rec-passo-cpf').style.display='';
-  document.getElementById('rec-btn-avancar').onclick=recAvancarCpf;
-  setTimeout(()=>document.getElementById('rec-cpf-input').focus(),100);
+  sbClient.auth.getSession().then(({data})=>{
+    const email=data&&data.session&&data.session.user.email;
+    if(!email){document.getElementById('rec-login-erro').textContent='Este computador não está conectado à nuvem. Conecte primeiro.';return;}
+    document.getElementById('rec-email-nuvem').textContent=email;
+    document.getElementById('rec-passo-login').style.display='none';
+    document.getElementById('rec-passo-cpf').style.display='';
+    document.getElementById('rec-btn-avancar').onclick=recAvancarCpf;
+    setTimeout(()=>document.getElementById('rec-cpf-input').focus(),100);
+  });
 }
-function recAvancarCpf(){
-  const digitado=(document.getElementById('rec-cpf-input').value||'').replace(/\D/g,'');
-  const cadastrado=(_recUsuarioAlvo.cpf||'').replace(/\D/g,'');
-  if(!digitado||digitado!==cadastrado){document.getElementById('rec-cpf-erro').textContent='CPF não confere.';return;}
+async function recAvancarCpf(){
+  const pw=document.getElementById('rec-cpf-input').value, err=document.getElementById('rec-cpf-erro'), btn=document.getElementById('rec-btn-avancar');
+  if(!pw){err.textContent='Digite a senha da conta da nuvem.';return;}
+  err.textContent='';btn.disabled=true;
+  try{
+    const{data}=await sbClient.auth.getSession();const email=data&&data.session&&data.session.user.email;
+    const{error}=await sbClient.auth.signInWithPassword({email,password:pw});
+    if(error){err.textContent=/Invalid login/i.test(error.message)?'Senha da nuvem incorreta.':error.message;return;}
+  }catch(e){err.textContent='Sem internet. Verifique a conexão.';return;}
+  finally{btn.disabled=false;document.getElementById('rec-cpf-input').value='';}
   document.getElementById('rec-passo-cpf').style.display='none';
   document.getElementById('rec-passo-senha').style.display='';
   document.getElementById('rec-btn-avancar').textContent='Redefinir Senha';
@@ -1663,7 +1673,7 @@ function recAvancarCpf(){
 }
 function recSalvarNovaSenha(){
   const s1=document.getElementById('rec-senha1-input').value,s2=document.getElementById('rec-senha2-input').value;
-  if(!s1||s1.length<3){document.getElementById('rec-senha-erro').textContent='Digite uma senha (mínimo 3 caracteres).';return;}
+  if(!s1||s1.length<6){document.getElementById('rec-senha-erro').textContent='Digite uma senha com no mínimo 6 caracteres.';return;}
   if(s1!==s2){document.getElementById('rec-senha-erro').textContent='As senhas não conferem.';return;}
   _recUsuarioAlvo.senha=s1;
   saveDB();
