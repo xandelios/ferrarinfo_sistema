@@ -1,0 +1,11 @@
+# Nunca enviar segredos, backups ou certificados para o GitHub
+.env
+.env.*
+*.dump
+*.sql
+*.pem
+*.crt
+*.key
+*.p12
+node_modules/
+.vercel/
